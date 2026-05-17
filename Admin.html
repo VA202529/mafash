@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mafash Admin</title>
+    <style>
+      :root {
+        --bg: #101418;
+        --panel: #171d23;
+        --panel2: #1f2730;
+        --ink: #eef3f0;
+        --muted: #9aa7a1;
+        --line: #2b3640;
+        --brand: #28b487;
+        --warn: #f59e0b;
+        --bad: #ef4444;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          sans-serif;
+      }
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      .shell {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 18px;
+      }
+      .top {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(16, 20, 24, 0.92);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--line);
+      }
+      .bar {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+      }
+      .brand {
+        font-size: 22px;
+        font-weight: 850;
+      }
+      .nav {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .btn,
+      .nav button {
+        border: 1px solid var(--line);
+        background: var(--panel2);
+        color: var(--ink);
+        border-radius: 8px;
+        min-height: 42px;
+        padding: 9px 12px;
+      }
+      .btn.primary,
+      .nav button.active {
+        background: var(--brand);
+        border-color: var(--brand);
+        color: #06110d;
+      }
+      .btn.warn {
+        background: var(--warn);
+        border-color: var(--warn);
+        color: #111;
+      }
+      .btn.danger {
+        background: var(--bad);
+        border-color: var(--bad);
+        color: #fff;
+      }
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+      .cols {
+        grid-template-columns: 340px 1fr;
+      }
+      .two {
+        grid-template-columns: 1fr 1fr;
+      }
+      .cards {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .hidden {
+        display: none !important;
+      }
+      .input {
+        width: 100%;
+        border: 1px solid var(--line);
+        background: #11171d;
+        color: var(--ink);
+        border-radius: 8px;
+        min-height: 42px;
+        padding: 9px;
+      }
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+      .field span {
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--muted);
+      }
+      .stack {
+        display: grid;
+        gap: 10px;
+      }
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .table th,
+      .table td {
+        padding: 10px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      .table th {
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .split {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .section {
+        display: none;
+      }
+      .section.active {
+        display: block;
+      }
+      .notice {
+        padding: 10px;
+        border-radius: 8px;
+        background: #203428;
+        color: #9cf0c9;
+      }
+      .error {
+        background: #3b1d1d;
+        color: #ffb4b4;
+      }
+      .scroll {
+        overflow: auto;
+      }
+      .login {
+        max-width: 440px;
+        margin: 10vh auto;
+      }
+      .pill {
+        display: inline-flex;
+        border-radius: 999px;
+        background: #22372f;
+        color: #7ee0bb;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      @media (max-width: 920px) {
+        .cols,
+        .two,
+        .cards {
+          grid-template-columns: 1fr;
+        }
+        .bar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .table {
+          min-width: 980px;
+        }
+        .shell {
+          padding: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loginView" class="login panel stack">
+      <h1>Mafash Admin</h1>
+      <label class="field"
+        ><span>Google Apps Script Web App URL</span><input class="input" id="apiBase"
+      /></label>
+      <button class="btn" onclick="saveApiBase()" type="button">API URL opslaan</button>
+      <form id="loginForm" class="stack">
+        <label class="field"
+          ><span>E-mail</span
+          ><input class="input" name="email" type="email" value="admin@webshop.local" required
+        /></label>
+        <label class="field"
+          ><span>Wachtwoord</span><input class="input" name="password" type="password" required
+        /></label>
+        <button class="btn primary">Inloggen</button>
+      </form>
+      <div id="loginMsg"></div>
+    </div>
+
+    <div id="appView" class="hidden">
+      <header class="top">
+        <div class="bar">
+          <div>
+            <div class="brand">Mafash Admin</div>
+            <div class="muted" id="actor"></div>
+          </div>
+          <nav class="nav">
+            <button data-tab="products" class="active">Producten</button>
+            <button data-tab="orders">Orders</button>
+            <button data-tab="settings">Bedrijfsgegevens</button>
+            <button onclick="logout()">Uitloggen</button>
+          </nav>
+        </div>
+      </header>
+
+      <main class="shell">
+        <section id="products" class="section active">
+          <div class="grid cols">
+            <form id="productForm" class="panel stack">
+              <h2>Product aanmaken</h2>
+              <label class="field"
+                ><span>Naam</span><input class="input" name="name" required
+              /></label>
+              <label class="field"
+                ><span>Merk</span
+                ><input class="input" name="brand" placeholder="Essentials" required
+              /></label>
+              <label class="field"
+                ><span>Categorie</span
+                ><select class="input" name="category" required>
+                  <option>Tops</option>
+                  <option>Bottoms</option>
+                  <option>Outerwear</option>
+                  <option>Footwear</option>
+                </select></label
+              >
+              <label class="field"
+                ><span>Maten, komma-gescheiden</span
+                ><input class="input" name="sizes" placeholder="XS,S,M,L,XL" required
+              /></label>
+              <div class="grid two">
+                <label class="field"
+                  ><span>Verkoopprijs incl. BTW</span
+                  ><input class="input" name="sell_price" type="number" step="0.01" required
+                /></label>
+                <label class="field"
+                  ><span>Originele prijs</span
+                  ><input class="input" name="retail_price" type="number" step="0.01"
+                /></label>
+              </div>
+              <div class="grid two">
+                <label class="field"
+                  ><span>Inkoopprijs</span
+                  ><input class="input" name="cost_price" type="number" step="0.01" value="0"
+                /></label>
+                <label class="field"
+                  ><span>Voorraad</span><input class="input" name="stock" type="number" required
+                /></label>
+              </div>
+              <div class="grid two">
+                <label class="field"
+                  ><span>Kortingstype</span
+                  ><select class="input" name="discount_type">
+                    <option value="none">Geen</option>
+                    <option value="percent">Percentage</option>
+                    <option value="fixed">Vast bedrag</option>
+                  </select></label
+                >
+                <label class="field"
+                  ><span>Kortingswaarde</span
+                  ><input class="input" name="discount_value" type="number" step="0.01" value="0"
+                /></label>
+              </div>
+              <label
+                ><input type="checkbox" name="featured" value="true" checked /> Featured op
+                homepage</label
+              >
+              <label class="field"><span>SKU</span><input class="input" name="sku" /></label>
+              <label class="field"
+                ><span>Afbeelding URL of Drive file URL</span><input class="input" name="image_url"
+              /></label>
+              <label class="field"
+                ><span>Beschrijving</span
+                ><textarea class="input" name="description" rows="4"></textarea>
+              </label>
+              <button class="btn primary">Aanmaken + Drive-map</button>
+            </form>
+
+            <div class="panel scroll">
+              <div class="split">
+                <h2>Producten</h2>
+                <button class="btn" onclick="loadProducts()">Vernieuwen</button>
+              </div>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Categorie</th>
+                    <th>Maten</th>
+                    <th>Prijs</th>
+                    <th>Korting</th>
+                    <th>Voorraad</th>
+                    <th>Drive</th>
+                    <th>Actie</th>
+                  </tr>
+                </thead>
+                <tbody id="productsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="orders" class="section">
+          <div class="split">
+            <h1>Orders</h1>
+            <button class="btn" onclick="loadOrders()">Vernieuwen</button>
+          </div>
+          <div class="panel scroll">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Klant</th>
+                  <th>Betaling</th>
+                  <th>Levering</th>
+                  <th>Totaal</th>
+                  <th>Actie</th>
+                </tr>
+              </thead>
+              <tbody id="ordersBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="settings" class="section">
+          <div class="split">
+            <h1>Bedrijfsgegevens</h1>
+            <button class="btn" onclick="loadCompany()">Vernieuwen</button>
+          </div>
+          <form id="companyForm" class="panel stack">
+            <div id="companyFields" class="grid two"></div>
+            <button class="btn primary">Opslaan</button>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <dialog
+      id="orderDialog"
+      class="panel"
+      style="
+        width: min(760px, 94vw);
+        border: 1px solid var(--line);
+        color: var(--ink);
+        background: var(--panel);
+      "
+    >
+      <div class="split">
+        <h2 id="dialogTitle">Order</h2>
+        <button class="btn" onclick="orderDialog.close()">Sluiten</button>
+      </div>
+      <div id="orderDetails" class="stack"></div>
+    </dialog>
+
+    <script>
+      const DEFAULT_API_BASE =
+        "https://script.google.com/macros/s/AKfycbyiQvbymRAMknw96eZ8r7rtFIK2UyMyLg-7nEme9QgSOEoGbaUXucOEtns6TwJHOHBC/exec";
+      const storedApiBase = localStorage.getItem("mafash_api_base") || "";
+      const state = {
+        token: localStorage.getItem("webshop_staff_token") || "",
+        apiBase: storedApiBase || DEFAULT_API_BASE,
+        staff: null,
+        products: [],
+        orders: [],
+      };
+      const qs = (s) => document.querySelector(s);
+      const qsa = (s) => Array.from(document.querySelectorAll(s));
+      const esc = (v) =>
+        String(v ?? "").replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+        );
+      const money = (v) => "EUR " + Number(v || 0).toFixed(2);
+      qs("#apiBase").value = state.apiBase;
+
+      function note(t, err = false) {
+        return `<div class="notice ${err ? "error" : ""}">${esc(t)}</div>`;
+      }
+      function saveApiBase() {
+        state.apiBase = qs("#apiBase").value.trim() || DEFAULT_API_BASE;
+        localStorage.setItem("mafash_api_base", state.apiBase);
+      }
+      async function api(action, data = {}) {
+        const response = await fetch(state.apiBase, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action, token: state.token, ...data }),
+        });
+        return response.json();
+      }
+      async function submit(button, text, fn) {
+        const old = button.textContent;
+        button.disabled = true;
+        button.textContent = text;
+        try {
+          return await fn();
+        } finally {
+          button.disabled = false;
+          button.textContent = old;
+        }
+      }
+
+      qs("#loginForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        saveApiBase();
+        await submit(e.submitter, "Inloggen...", async () => {
+          const r = await api("adminLogin", Object.fromEntries(new FormData(e.target)));
+          if (!r.success) {
+            qs("#loginMsg").innerHTML = note(r.error.message, true);
+            return;
+          }
+          state.token = r.data.token;
+          state.staff = r.data.staff;
+          localStorage.setItem("webshop_staff_token", state.token);
+          start();
+        });
+      });
+
+      async function start() {
+        if (!state.token) return;
+        const r = await api("getStaffSession");
+        if (!r.success) {
+          localStorage.removeItem("webshop_staff_token");
+          return;
+        }
+        state.staff = r.data.staff;
+        qs("#loginView").classList.add("hidden");
+        qs("#appView").classList.remove("hidden");
+        qs("#actor").textContent = `${state.staff.name} - ${state.staff.role}`;
+        loadProducts();
+      }
+      function logout() {
+        localStorage.removeItem("webshop_staff_token");
+        location.reload();
+      }
+
+      qsa("[data-tab]").forEach((b) =>
+        b.addEventListener("click", () => {
+          qsa("[data-tab]").forEach((x) => x.classList.remove("active"));
+          qsa(".section").forEach((x) => x.classList.remove("active"));
+          b.classList.add("active");
+          qs("#" + b.dataset.tab).classList.add("active");
+          if (b.dataset.tab === "products") loadProducts();
+          if (b.dataset.tab === "orders") loadOrders();
+          if (b.dataset.tab === "settings") loadCompany();
+        }),
+      );
+
+      qs("#productForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        await submit(e.submitter, "Aanmaken...", async () => {
+          const data = Object.fromEntries(new FormData(e.target));
+          data.featured = e.target.featured.checked;
+          const r = await api("createProduct", data);
+          if (!r.success) {
+            alert(r.error.message);
+            return;
+          }
+          e.target.reset();
+          loadProducts();
+        });
+      });
+
+      async function loadProducts() {
+        qs("#productsBody").innerHTML =
+          '<tr><td colspan="8" class="muted">Producten laden...</td></tr>';
+        const r = await api("getProductsAdmin");
+        if (!r.success) {
+          qs("#productsBody").innerHTML =
+            `<tr><td colspan="8">${note(r.error.message, true)}</td></tr>`;
+          return;
+        }
+        state.products = r.data || [];
+        qs("#productsBody").innerHTML = state.products
+          .map((p) => {
+            const id = esc(p.product_id || p.id);
+            return `<tr>
+          <td><input class="input" id="name-${id}" value="${esc(p.name)}"><input class="input" style="margin-top:6px" id="brand-${id}" value="${esc(p.brand || "")}"><br><span class="muted">${id}</span></td>
+          <td><select class="input" id="cat-${id}">${["Tops", "Bottoms", "Outerwear", "Footwear"].map((c) => `<option ${c === p.category ? "selected" : ""}>${c}</option>`).join("")}</select></td>
+          <td><input class="input" id="sizes-${id}" value="${esc(p.sizes || "")}"></td>
+          <td><input class="input" id="price-${id}" value="${esc(p.sell_price || p.price_inc_vat || 0)}"><input class="input" style="margin-top:6px" id="retail-${id}" value="${esc(p.retail_price || "")}" placeholder="Origineel"></td>
+          <td><select class="input" id="dtype-${id}"><option value="none" ${p.discount_type === "none" ? "selected" : ""}>Geen</option><option value="percent" ${p.discount_type === "percent" ? "selected" : ""}>%</option><option value="fixed" ${p.discount_type === "fixed" ? "selected" : ""}>EUR</option></select><input class="input" style="margin-top:6px" id="dval-${id}" value="${esc(p.discount_value || 0)}"></td>
+          <td><input class="input" id="stock-${id}" value="${esc(p.stock)}"><label><input type="checkbox" id="featured-${id}" ${String(p.featured).toLowerCase() === "true" ? "checked" : ""}> Featured</label></td>
+          <td>${p.drive_folder_url ? `<a href="${esc(p.drive_folder_url)}" target="_blank">Drive-map</a><br><button class="btn" onclick="syncImages('${id}',this)">Sync</button>` : '<span class="muted">Geen map</span>'}</td>
+          <td><button class="btn primary" onclick="saveProduct('${id}',this)">Opslaan</button><br><button class="btn danger" style="margin-top:6px" onclick="archiveProduct('${id}',this)">Archief</button></td>
+        </tr>`;
+          })
+          .join("");
+      }
+
+      async function saveProduct(id, button) {
+        await submit(button, "Opslaan...", async () => {
+          const r = await api("updateProduct", {
+            product_id: id,
+            name: qs("#name-" + CSS.escape(id)).value,
+            brand: qs("#brand-" + CSS.escape(id)).value,
+            category: qs("#cat-" + CSS.escape(id)).value,
+            sizes: qs("#sizes-" + CSS.escape(id)).value,
+            sell_price: qs("#price-" + CSS.escape(id)).value,
+            retail_price: qs("#retail-" + CSS.escape(id)).value,
+            discount_type: qs("#dtype-" + CSS.escape(id)).value,
+            discount_value: qs("#dval-" + CSS.escape(id)).value,
+            stock: qs("#stock-" + CSS.escape(id)).value,
+            featured: qs("#featured-" + CSS.escape(id)).checked,
+          });
+          if (!r.success) alert(r.error.message);
+          loadProducts();
+        });
+      }
+      async function archiveProduct(id, button) {
+        await submit(button, "Archiveren...", async () => {
+          const r = await api("archiveProduct", { product_id: id });
+          if (!r.success) alert(r.error.message);
+          loadProducts();
+        });
+      }
+      async function syncImages(id, button) {
+        await submit(button, "Sync...", async () => {
+          const r = await api("syncProductImages", { product_id: id });
+          alert(
+            r.success
+              ? `${r.data.synced.length} afbeelding(en) gesynchroniseerd.`
+              : r.error.message,
+          );
+          loadProducts();
+        });
+      }
+
+      async function loadOrders() {
+        qs("#ordersBody").innerHTML = '<tr><td colspan="6" class="muted">Orders laden...</td></tr>';
+        const r = await api("getOrders");
+        if (!r.success) {
+          qs("#ordersBody").innerHTML =
+            `<tr><td colspan="6">${note(r.error.message, true)}</td></tr>`;
+          return;
+        }
+        state.orders = r.data || [];
+        qs("#ordersBody").innerHTML = state.orders
+          .map(
+            (o) =>
+              `<tr><td>${esc(o.order_id)}</td><td>${esc(o.customer_name)}<br><span class="muted">${esc(o.email)}</span></td><td><span class="pill">${esc(o.payment_status)}</span></td><td><span class="pill">${esc(o.fulfillment_status)}</span></td><td>${money(o.total_price)}</td><td><button class="btn" onclick="openOrder('${esc(o.order_id)}')">Open</button></td></tr>`,
+          )
+          .join("");
+      }
+      async function openOrder(id) {
+        const r = await api("getOrderDetails", { order_id: id });
+        if (!r.success) {
+          alert(r.error.message);
+          return;
+        }
+        const o = r.data;
+        qs("#dialogTitle").textContent = "Order " + o.order_id;
+        qs("#orderDetails").innerHTML =
+          `<div class="grid two"><div class="panel"><h3>Klant</h3>${esc(o.customer_name)}<br>${esc(o.email)}<br>${esc(o.phone)}<br>${esc(o.address)} ${esc(o.customer_postal_code)} ${esc(o.customer_city)}</div><div class="panel"><h3>Totaal</h3>${money(o.total_price)}<br>BTW: ${money(o.vat_amount)}<br>Verzending: ${money(o.shipping_cost)}</div></div>
+      <div class="grid two"><label class="field"><span>Betaalstatus</span><select class="input" id="pay">${["pending", "payment_link_sent", "paid", "failed", "refunded", "cancelled"].map((x) => `<option ${x === o.payment_status ? "selected" : ""}>${x}</option>`).join("")}</select></label><label class="field"><span>Betaallink</span><input class="input" id="plink" value="${esc(o.payment_link || "")}"></label><label class="field"><span>Levering</span><select class="input" id="ful">${["pending", "processing", "packed", "shipped", "delivered", "ready_for_pickup", "picked_up", "cancelled"].map((x) => `<option ${x === o.fulfillment_status ? "selected" : ""}>${x}</option>`).join("")}</select></label><label class="field"><span>Track & trace</span><input class="input" id="track" value="${esc(o.track_trace || "")}"></label></div>
+      <div class="split"><button class="btn warn" onclick="savePayment('${esc(o.order_id)}')">Betaling opslaan</button><button class="btn primary" onclick="saveFulfillment('${esc(o.order_id)}')">Levering opslaan</button></div>
+      <h3>Producten</h3>${(o.items || []).map((i) => `<div class="split"><span>${esc(i.product_name)} · ${esc(i.size || "-")} x ${esc(i.quantity)}</span><strong>${money(i.line_total)}</strong></div>`).join("")}`;
+        orderDialog.showModal();
+      }
+      async function savePayment(id) {
+        const r = await api("updatePaymentStatus", {
+          order_id: id,
+          payment_status: qs("#pay").value,
+          payment_link: qs("#plink").value,
+        });
+        alert(r.success ? "Opgeslagen" : r.error.message);
+        loadOrders();
+      }
+      async function saveFulfillment(id) {
+        const r = await api("updateFulfillmentStatus", {
+          order_id: id,
+          fulfillment_status: qs("#ful").value,
+          track_trace: qs("#track").value,
+        });
+        alert(r.success ? "Opgeslagen" : r.error.message);
+        loadOrders();
+      }
+
+      const companyKeys = [
+        "website_name",
+        "company_name",
+        "brand_name",
+        "tagline",
+        "announcement_bar",
+        "footer_text",
+        "email_1",
+        "phone_1",
+        "shipping_cost",
+        "free_shipping_above",
+        "vat_percentage",
+      ];
+      async function loadCompany() {
+        qs("#companyFields").innerHTML = '<p class="muted">Laden...</p>';
+        const r = await api("getCompanySettings");
+        if (!r.success) {
+          qs("#companyFields").innerHTML = note(r.error.message, true);
+          return;
+        }
+        qs("#companyFields").innerHTML = companyKeys
+          .map(
+            (k) =>
+              `<label class="field"><span>${esc(k)}</span><textarea class="input" name="${esc(k)}" rows="${["announcement_bar", "footer_text"].includes(k) ? 3 : 1}">${esc(r.data[k] || "")}</textarea></label>`,
+          )
+          .join("");
+      }
+      qs("#companyForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        await submit(e.submitter, "Opslaan...", async () => {
+          const r = await api("updateCompanySettings", {
+            values: Object.fromEntries(new FormData(e.target)),
+          });
+          alert(r.success ? "Opgeslagen" : r.error.message);
+        });
+      });
+
+      if (state.token) start();
+    </script>
+  </body>
+</html>
