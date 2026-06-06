@@ -1,7 +1,7 @@
 import type { Product } from "@/data/products";
 
 export const API_BASE =
-  "https://script.google.com/macros/s/AKfycbwC2-lIqeaqja0TEYlbbTEuv60JloxexDm_JO1boFGNELYdn_Mp7TQTR3w9Msy0u7s-/exec";
+  "https://script.google.com/macros/s/AKfycbynWfli1fSbNHx_29-G104VRmNzj0_yye3uN3gt-O0XjSju2C_OgLUb782APovi3_A/exec";
 
 type ApiEnvelope<T> =
   | { success: true; data: T; error: null }
@@ -35,6 +35,13 @@ export type CreateOrderPayload = {
   coupon_code?: string;
   notes?: string;
   items: Array<{ product_id: string; quantity: number; size?: string }>;
+};
+
+export type AddressLookupResult = {
+  found: boolean;
+  street?: string;
+  city?: string;
+  postal_code?: string;
 };
 
 export type ProofReview = {
@@ -83,6 +90,16 @@ export type CollectionDrop = {
   end_at?: string;
   schedule_state?: string;
   product_ids?: string[];
+};
+
+export type ProductPageResult = {
+  items: Product[];
+  total: number;
+  page: number;
+  limit: number;
+  page_count: number;
+  has_next: boolean;
+  has_previous: boolean;
 };
 
 function splitList(value: unknown) {
@@ -205,6 +222,36 @@ export async function getProducts(
   }
 }
 
+export async function getProductsPage(
+  filters: {
+    category?: string;
+    brand?: string;
+    featured?: boolean;
+    page?: number;
+    limit?: number;
+  } = {},
+): Promise<ProductPageResult> {
+  const data = await request<{
+    items: Array<Record<string, unknown>>;
+    total: number;
+    page: number;
+    limit: number;
+    page_count: number;
+    has_next: boolean;
+    has_previous: boolean;
+  }>("getProductsPage", filters);
+  return {
+    ...data,
+    items: (data.items || []).map(normalizeProduct),
+    total: Number(data.total || 0),
+    page: Number(data.page || 1),
+    limit: Number(data.limit || filters.limit || 12),
+    page_count: Number(data.page_count || 1),
+    has_next: Boolean(data.has_next),
+    has_previous: Boolean(data.has_previous),
+  };
+}
+
 export async function getProductDetails(productId: string) {
   try {
     const data = await request<Record<string, unknown>>("getProductDetails", {
@@ -282,4 +329,11 @@ export async function createOrder(payload: CreateOrderPayload) {
     payment_status: string;
     fulfillment_status: string;
   }>("createOrder", payload);
+}
+
+export async function lookupAddress(postalCode: string, houseNumber: string) {
+  return request<AddressLookupResult>("lookupAddress", {
+    postal_code: postalCode,
+    house_number: houseNumber,
+  });
 }

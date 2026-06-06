@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Check, RotateCcw, ShieldCheck, Truck } from "lucide-react";
+import { Check, RotateCcw, Share2, ShieldCheck, Truck } from "lucide-react";
 import type { Product } from "@/data/products";
-import { getProductDetails, getProducts } from "@/lib/api";
+import { getProductDetails, getProductsPage } from "@/lib/api";
 import { useCart } from "@/lib/cart";
 import { SizeGuide } from "@/components/size-guide";
 
@@ -18,6 +18,7 @@ function ProductPage() {
   const [size, setSize] = useState<string | null>(null);
   const [mainImage, setMainImage] = useState("");
   const [added, setAdded] = useState(false);
+  const [shared, setShared] = useState(false);
 
   const {
     data: product,
@@ -27,9 +28,10 @@ function ProductPage() {
     queryKey: ["product", id],
     queryFn: () => getProductDetails(id),
   });
-  const { data: allProducts = [] } = useQuery({
-    queryKey: ["products", "related"],
-    queryFn: () => getProducts(),
+  const { data: relatedPage } = useQuery({
+    queryKey: ["products", "related", product?.category],
+    queryFn: () => getProductsPage({ category: product?.category, limit: 5, page: 1 }),
+    enabled: Boolean(product?.category),
   });
 
   useEffect(() => {
@@ -38,10 +40,31 @@ function ProductPage() {
     setMainImage(product.image);
   }, [product]);
 
+  useEffect(() => {
+    if (!product || typeof document === "undefined") return;
+    const title = `${product.name} | ${product.brand} | MA Fashion`;
+    const description =
+      product.description || `${product.name} van ${product.brand}. Bekijk dit Mafash item.`;
+    document.title = title;
+    setMeta("description", description);
+    setMeta("og:title", title, "property");
+    setMeta("og:description", description, "property");
+    setMeta("og:type", "product", "property");
+    setMeta("og:image", product.image, "property");
+    setMeta("og:url", window.location.href, "property");
+  }, [product]);
+
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-md px-6 py-32 text-center text-muted-foreground">
-        Product laden...
+      <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-12 px-6 py-10 md:grid-cols-2">
+        <div className="aspect-[4/5] animate-pulse bg-secondary" />
+        <div className="space-y-5">
+          <div className="h-3 w-28 animate-pulse bg-secondary" />
+          <div className="h-14 w-3/4 animate-pulse bg-secondary" />
+          <div className="h-6 w-32 animate-pulse bg-secondary" />
+          <div className="h-24 w-full animate-pulse bg-secondary" />
+          <div className="h-12 w-full animate-pulse bg-secondary" />
+        </div>
       </div>
     );
   }
@@ -51,7 +74,7 @@ function ProductPage() {
       <div className="mx-auto max-w-md px-6 py-32 text-center">
         <h1 className="font-serif text-4xl">Product niet gevonden</h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          Dit product staat niet actief in de Google Sheet of de Web App gaf geen product terug.
+          Dit product is momenteel niet beschikbaar.
         </p>
         <Link
           to="/shop"
@@ -72,7 +95,7 @@ function ProductPage() {
     : product.image
       ? [{ image_id: "main", url: product.image, thumbnail_url: product.image }]
       : [];
-  const related = allProducts
+  const related = (relatedPage?.items || [])
     .filter((p) => p.id !== product.id && p.category === product.category)
     .slice(0, 4);
   const sizeOptions = product.variants?.length
@@ -95,6 +118,41 @@ function ProductPage() {
     navigate({ to: "/checkout" });
   };
 
+  const handleShare = async () => {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: product.name, text: product.description, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        window.setTimeout(() => setShared(false), 1800);
+      }
+    } catch (shareError) {
+      console.warn(shareError);
+    }
+  };
+
+  const productJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    brand: { "@type": "Brand", name: product.brand },
+    image: product.image ? [product.image] : [],
+    description: product.description,
+    sku: product.sku,
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "EUR",
+      price: product.price.toFixed(2),
+      availability:
+        Number(product.stock || 0) > 0
+          ? "https://schema.org/InStock"
+          : "https://schema.org/PreOrder",
+      url: typeof window !== "undefined" ? window.location.href : "",
+    },
+  };
+
   return (
     <div className="mx-auto max-w-[1400px] px-6 py-10">
       <nav className="mb-8 text-xs uppercase tracking-[0.18em] text-muted-foreground">
@@ -115,6 +173,8 @@ function ProductPage() {
               <img
                 src={mainImage}
                 alt={product.name}
+                loading="eager"
+                decoding="async"
                 width={1024}
                 height={1280}
                 className="w-full object-cover"
@@ -181,6 +241,14 @@ function ProductPage() {
           <p className="mt-6 text-sm leading-relaxed text-muted-foreground">
             {product.description}
           </p>
+
+          <button
+            onClick={handleShare}
+            className="mt-5 inline-flex min-h-11 items-center gap-2 border border-border px-4 py-3 text-xs uppercase tracking-[0.18em] hover:border-foreground"
+          >
+            <Share2 className="h-4 w-4" />
+            {shared ? "Link gekopieerd" : "Product delen"}
+          </button>
 
           <div className="mt-8">
             <div className="mb-3 flex items-center justify-between">
@@ -297,6 +365,18 @@ function ProductPage() {
           </div>
         </section>
       )}
+      <script type="application/ld+json">{JSON.stringify(productJsonLd)}</script>
     </div>
   );
+}
+
+function setMeta(name: string, content: string, attr: "name" | "property" = "name") {
+  if (!content) return;
+  let tag = document.head.querySelector(`meta[${attr}="${name}"]`);
+  if (!tag) {
+    tag = document.createElement("meta");
+    tag.setAttribute(attr, name);
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute("content", content);
 }

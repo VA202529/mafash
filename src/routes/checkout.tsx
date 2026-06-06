@@ -1,9 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Check } from "lucide-react";
-import { createOrder } from "@/lib/api";
+import { createOrder, lookupAddress } from "@/lib/api";
 import { useCart } from "@/lib/cart";
-import { privateSellerDisclaimer } from "@/lib/disclaimer";
 
 export const Route = createFileRoute("/checkout")({
   component: CheckoutPage,
@@ -15,6 +14,11 @@ function CheckoutPage() {
   const [placed, setPlaced] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [postalCode, setPostalCode] = useState("");
+  const [houseNumber, setHouseNumber] = useState("");
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("");
+  const [addressHint, setAddressHint] = useState("");
   const shipping = subtotal >= 200 || subtotal === 0 ? 0 : 12;
   const total = subtotal + shipping;
 
@@ -41,8 +45,9 @@ function CheckoutPage() {
         <div className="eyebrow mt-6">Order confirmed</div>
         <h1 className="mt-3 font-serif text-5xl">Thank you.</h1>
         <p className="mt-4 text-sm text-muted-foreground">
-          Your order <span className="text-foreground">#{placed}</span> has been received. A
-          confirmation will be sent to your email shortly.
+          Bedankt voor je bestelling. We hebben je order{" "}
+          <span className="text-foreground">#{placed}</span> ontvangen. Je krijgt eerst een
+          orderbevestiging en daarna, zodra je order is verwerkt, een tweede mail met de betaallink.
         </p>
         <Link
           to="/"
@@ -61,16 +66,40 @@ function CheckoutPage() {
     const form = new FormData(e.currentTarget);
     const firstName = String(form.get("first_name") || "").trim();
     const lastName = String(form.get("last_name") || "").trim();
+    const email = String(form.get("email") || "").trim();
+    const phone = String(form.get("phone") || "").trim();
+    const address = String(form.get("address") || "").trim();
+    const customerCity = String(form.get("customer_city") || "").trim();
+    const customerPostalCode = String(form.get("customer_postal_code") || "").trim();
+
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !phone ||
+      !address ||
+      !customerCity ||
+      !customerPostalCode
+    ) {
+      setSubmitting(false);
+      setError("Vul alle verplichte velden in om je bestelling te plaatsen.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setSubmitting(false);
+      setError("Vul een geldig e-mailadres in.");
+      return;
+    }
 
     try {
       const order = await createOrder({
         customer_name: `${firstName} ${lastName}`.trim(),
-        email: String(form.get("email") || ""),
-        phone: String(form.get("phone") || ""),
+        email,
+        phone,
         delivery_type: String(form.get("delivery_type") || "verzenden") as "verzenden" | "ophalen",
-        address: String(form.get("address") || ""),
-        customer_city: String(form.get("customer_city") || ""),
-        customer_postal_code: String(form.get("customer_postal_code") || ""),
+        address,
+        customer_city: customerCity,
+        customer_postal_code: customerPostalCode,
         customer_country: String(form.get("customer_country") || "Nederland"),
         coupon_code: String(form.get("coupon_code") || ""),
         notes: String(form.get("notes") || ""),
@@ -84,9 +113,33 @@ function CheckoutPage() {
       setPlaced(order.order_id);
       window.scrollTo(0, 0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Order could not be placed.");
+      console.warn(err);
+      setError("Er ging iets mis bij het plaatsen van je bestelling. Probeer het later opnieuw.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const tryAddressLookup = async (nextPostal = postalCode, nextHouse = houseNumber) => {
+    const normalizedPostal = nextPostal.toUpperCase().replace(/\s+/g, "");
+    if (!/^[1-9][0-9]{3}[A-Z]{2}$/.test(normalizedPostal) || !nextHouse.trim()) {
+      setAddressHint("");
+      return;
+    }
+    setAddressHint("Adres controleren...");
+    try {
+      const result = await lookupAddress(normalizedPostal, nextHouse);
+      if (result.found && result.street && result.city) {
+        setStreet(`${result.street} ${nextHouse}`.trim());
+        setCity(result.city);
+        setPostalCode(result.postal_code || normalizedPostal);
+        setAddressHint("Adres automatisch aangevuld. Controleer het nog even.");
+      } else {
+        setAddressHint("Adres niet automatisch gevonden. Vul straat en plaats handmatig in.");
+      }
+    } catch (lookupError) {
+      console.warn(lookupError);
+      setAddressHint("Adres niet automatisch gevonden. Vul straat en plaats handmatig in.");
     }
   };
 
@@ -125,10 +178,48 @@ function CheckoutPage() {
               <Field label="First name" name="first_name" required />
               <Field label="Last name" name="last_name" required />
             </div>
-            <Field label="Address" name="address" required />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Field label="City" name="customer_city" required />
-              <Field label="Postal code" name="customer_postal_code" required />
+              <Field
+                label="Postal code"
+                name="customer_postal_code"
+                required
+                value={postalCode}
+                onChange={(event) => {
+                  setPostalCode(event.target.value);
+                  void tryAddressLookup(event.target.value, houseNumber);
+                }}
+                autoComplete="postal-code"
+              />
+              <Field
+                label="House number"
+                name="house_number"
+                required
+                value={houseNumber}
+                onChange={(event) => {
+                  setHouseNumber(event.target.value);
+                  void tryAddressLookup(postalCode, event.target.value);
+                }}
+                autoComplete="address-line2"
+              />
+              <Field
+                label="City"
+                name="customer_city"
+                required
+                value={city}
+                onChange={(event) => setCity(event.target.value)}
+                autoComplete="address-level2"
+              />
+            </div>
+            <Field
+              label="Address"
+              name="address"
+              required
+              value={street}
+              onChange={(event) => setStreet(event.target.value)}
+              autoComplete="street-address"
+            />
+            {addressHint && <p className="text-xs text-muted-foreground">{addressHint}</p>}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Field label="Country" name="customer_country" defaultValue="Nederland" required />
             </div>
           </Section>
@@ -146,12 +237,13 @@ function CheckoutPage() {
           </Section>
 
           <section className="border border-border bg-card p-5">
-            <div className="eyebrow mb-3">Disclaimer</div>
-            <div className="space-y-2 text-sm leading-relaxed text-muted-foreground">
-              {privateSellerDisclaimer.map((text) => (
-                <p key={text}>{text}</p>
-              ))}
-            </div>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Door te bestellen ga je akkoord met onze{" "}
+              <Link to="/disclaimer" className="text-foreground underline-offset-4 hover:underline">
+                disclaimer
+              </Link>
+              .
+            </p>
           </section>
 
           <button
@@ -159,7 +251,9 @@ function CheckoutPage() {
             disabled={submitting}
             className="w-full bg-foreground py-4 text-xs uppercase tracking-[0.22em] text-background hover:bg-foreground/85 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submitting ? "Placing order..." : `Place order — €${total.toFixed(2)}`}
+            {submitting
+              ? "Bestelling verwerken..."
+              : `Bestelling plaatsen - EUR ${total.toFixed(2)}`}
           </button>
         </div>
 

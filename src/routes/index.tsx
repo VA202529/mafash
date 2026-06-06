@@ -1,10 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import hero from "@/assets/hero.jpg";
 import type { Product } from "@/data/products";
-import { getActiveScheduledActions, getCollections, getProducts } from "@/lib/api";
+import { getActiveScheduledActions, getCollections, getProductsPage } from "@/lib/api";
 import { CustomerProof } from "@/components/customer-proof";
 import { CustomerReviews } from "@/components/customer-reviews";
 
@@ -13,16 +12,10 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const [loadFullProducts, setLoadFullProducts] = useState(false);
-  const { data: firstProducts = [], isLoading: isFirstLoading } = useQuery({
-    queryKey: ["products", "home", "first"],
-    queryFn: () => getProducts({ limit: 5 }),
+  const { data: productPage, isLoading } = useQuery({
+    queryKey: ["products", "home", "featured"],
+    queryFn: () => getProductsPage({ limit: 8, page: 1 }),
     staleTime: 60_000,
-  });
-  const { data: fullProducts = [], isFetching: isFullFetching } = useQuery({
-    queryKey: ["products", "home", "full"],
-    queryFn: () => getProducts(),
-    enabled: loadFullProducts,
   });
   const { data: actions = [] } = useQuery({
     queryKey: ["scheduled-actions", "active"],
@@ -34,15 +27,7 @@ function Home() {
     queryFn: getCollections,
     staleTime: 30_000,
   });
-  useEffect(() => {
-    if (firstProducts.length) {
-      const timer = window.setTimeout(() => setLoadFullProducts(true), 80);
-      return () => window.clearTimeout(timer);
-    }
-  }, [firstProducts.length]);
-
-  const data = fullProducts.length ? fullProducts : firstProducts;
-  const isLoading = isFirstLoading && !firstProducts.length;
+  const data = productPage?.items || [];
   const featured = data.slice(0, 4);
   const promo = actions.find((action) => action.frontend_text);
   const drop = drops[0];
@@ -133,11 +118,11 @@ function Home() {
           <div>
             <div className="eyebrow mb-3">The Edit</div>
             <h2 className="font-serif text-4xl md:text-5xl">Currently coveted.</h2>
-            {isFullFetching && firstProducts.length > 0 && (
+            {productPage?.total ? (
               <div className="mt-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Collectie aanvullen...
+                {productPage.total} producten beschikbaar
               </div>
-            )}
+            ) : null}
           </div>
           <Link
             to="/shop"
@@ -161,7 +146,7 @@ function Home() {
           ))}
           {!isLoading && featured.length === 0 && (
             <p className="col-span-full py-12 text-center text-muted-foreground">
-              Er staan nog geen actieve producten in de Google Sheet.
+              Er zijn momenteel geen producten beschikbaar. Kom later terug.
             </p>
           )}
         </div>

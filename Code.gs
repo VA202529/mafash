@@ -133,6 +133,22 @@ var APP = {
       "updated_at",
       "archived",
     ],
+    bundles: [
+      "bundle_id",
+      "name",
+      "product_ids",
+      "discount_type",
+      "discount_value",
+      "fixed_bundle_price",
+      "start_at",
+      "end_at",
+      "status",
+      "active",
+      "frontend_text",
+      "created_at",
+      "updated_at",
+      "archived",
+    ],
     orders: [
       "order_id",
       "created_at",
@@ -151,6 +167,8 @@ var APP = {
       "subtotal",
       "discount_total",
       "coupon_code",
+      "bundle_discount",
+      "bundle_names",
       "shipping_cost",
       "vat_rate",
       "vat_amount",
@@ -178,6 +196,7 @@ var APP = {
       "availability_status",
       "quantity",
       "line_total",
+      "bundle_id",
     ],
     coupons: [
       "coupon_id",
@@ -236,6 +255,7 @@ var APP = {
     vat_percentage: "21",
     drive_products_root_folder_id: "",
     drive_products_root_folder_name: "",
+    postcode_lookup_url: "",
   },
   DEFAULT_COMPANY: {
     website_name: "MA Fashion",
@@ -290,10 +310,13 @@ function route_(action, payload) {
       getCompany: getCompany,
       getProducts: getProducts,
       getProductsPublic: getProducts,
+      getProductsPage: getProductsPage,
       products: getProducts,
       getProductDetails: getProductDetails,
       getProofReviews: getProofReviews,
       getProofReviewsPublic: getProofReviews,
+      proofReviews: getProofReviews,
+      lookupAddress: lookupAddress,
       createOrder: createOrder,
       adminLogin: adminLogin,
       getStaffSession: getStaffSession,
@@ -313,6 +336,8 @@ function route_(action, payload) {
       syncProductImages: syncProductImages,
       updateProductVariants: updateProductVariants,
       getProofReviewsAdmin: getProofReviewsAdmin,
+      getProofReviewAdmin: getProofReviewsAdmin,
+      getProofsAdmin: getProofReviewsAdmin,
       createProofReview: createProofReview,
       updateProofReview: updateProofReview,
       archiveProofReview: archiveProofReview,
@@ -332,9 +357,16 @@ function route_(action, payload) {
       createCustomerReview: createCustomerReview,
       getCustomerReviewsPublic: getCustomerReviewsPublic,
       getCustomerReviewsAdmin: getCustomerReviewsAdmin,
+      getReviewsAdmin: getCustomerReviewsAdmin,
+      customerReviewsAdmin: getCustomerReviewsAdmin,
       updateCustomerReviewStatus: updateCustomerReviewStatus,
       archiveCustomerReview: archiveCustomerReview,
       bulkUpdateCustomerReviews: bulkUpdateCustomerReviews,
+      getBundlesAdmin: getBundlesAdmin,
+      getBundlesPublic: getBundlesPublic,
+      createBundle: createBundle,
+      updateBundle: updateBundle,
+      archiveBundle: archiveBundle,
       getOrders: getOrders,
       getNewOrders: getNewOrders,
       getArchivedOrders: getArchivedOrders,
@@ -345,6 +377,8 @@ function route_(action, payload) {
       bulkArchiveOrders: bulkArchiveOrders,
       updatePaymentStatus: updatePaymentStatus,
       updateFulfillmentStatus: updateFulfillmentStatus,
+      resendOrderEmail: resendOrderEmail,
+      sendPaymentLinkEmail: sendPaymentLinkEmail,
       getCompanySettings: getCompanySettings,
       updateCompanySettings: updateCompanySettings,
     };
@@ -397,6 +431,7 @@ function getProducts(payload) {
     var state = productScheduleState_(p);
     return (
       bool_(p.active) &&
+      !bool_(p.archived) &&
       (state === "live" || (bool_(payload.include_teasers) && state === "scheduled")) &&
       (bool_(payload.only_in_stock) ? stock > 0 : true)
     );
@@ -426,6 +461,71 @@ function getProducts(payload) {
   return ok_(data);
 }
 
+function getProductsPage(payload) {
+  payload = payload || {};
+  ensureProductIdsCached_();
+  var cachePayload = {
+    category: clean_(payload.category),
+    brand: clean_(payload.brand),
+    featured: bool_(payload.featured),
+    only_in_stock: bool_(payload.only_in_stock),
+    include_teasers: bool_(payload.include_teasers),
+    page: Math.max(1, Math.floor(num_(payload.page || 1))),
+    limit: Math.max(1, Math.min(24, Math.floor(num_(payload.limit || 12)))),
+  };
+  var cache = CacheService.getScriptCache();
+  var cacheKey =
+    "products_page_v1_" +
+    Utilities.base64EncodeWebSafe(JSON.stringify(cachePayload)).slice(0, 180);
+  var cached = cache.get(cacheKey);
+  if (cached) return JSON.parse(cached);
+  var ctx = productContext_();
+  var productRows = rows_("products").filter(function (p) {
+    var id = productId_(p);
+    var stock = productStock_(id, p, ctx);
+    var state = productScheduleState_(p);
+    return (
+      bool_(p.active) &&
+      !bool_(p.archived) &&
+      (state === "live" || (cachePayload.include_teasers && state === "scheduled")) &&
+      (cachePayload.only_in_stock ? stock > 0 : true)
+    );
+  });
+  if (cachePayload.category)
+    productRows = productRows.filter(function (p) {
+      return same_(p.category, cachePayload.category);
+    });
+  if (cachePayload.brand)
+    productRows = productRows.filter(function (p) {
+      return same_(p.brand, cachePayload.brand);
+    });
+  if (cachePayload.featured)
+    productRows = productRows.filter(function (p) {
+      return bool_(p.featured);
+    });
+  productRows.sort(function (a, b) {
+    return num_(a.sort_order) - num_(b.sort_order);
+  });
+  var limit = cachePayload.limit;
+  var page = cachePayload.page;
+  var total = productRows.length;
+  var offset = (page - 1) * limit;
+  var items = productRows.slice(offset, offset + limit).map(function (p) {
+    return publicProduct_(p, ctx);
+  });
+  var result = ok_({
+    items: items,
+    total: total,
+    page: page,
+    limit: limit,
+    page_count: Math.max(1, Math.ceil(total / limit)),
+    has_next: offset + limit < total,
+    has_previous: page > 1,
+  });
+  cache.put(cacheKey, JSON.stringify(result), 45);
+  return result;
+}
+
 function getProductDetails(payload) {
   validateRequired_(payload, ["product_id"]);
   var row = findRowAny_("products", ["product_id", "id"], payload.product_id);
@@ -446,6 +546,51 @@ function getProofReviews() {
     .map(publicProofReview_);
   cache.put("public_proof_reviews_v1", JSON.stringify(jsonSafe_(data)), 120);
   return ok_(data);
+}
+
+function lookupAddress(payload) {
+  payload = payload || {};
+  var postal = clean_(payload.postal_code || payload.customer_postal_code)
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  var house = clean_(payload.house_number || payload.number).replace(/\D+/g, "");
+  if (!/^[1-9][0-9]{3}[A-Z]{2}$/.test(postal) || !house) {
+    return ok_({ found: false, street: "", city: "", postal_code: postal });
+  }
+  var fallback = {
+    "1033WG:132": { street: "Marskramerstraat", city: "Amsterdam" },
+  };
+  var key = postal + ":" + house;
+  if (fallback[key]) {
+    return ok_({
+      found: true,
+      street: fallback[key].street,
+      city: fallback[key].city,
+      postal_code: postal.replace(/^([0-9]{4})([A-Z]{2})$/, "$1 $2"),
+    });
+  }
+  var settings = getSettingsMap_();
+  var template = clean_(settings.postcode_lookup_url);
+  if (!template) return ok_({ found: false, street: "", city: "", postal_code: postal });
+  try {
+    var url = template
+      .replace("{{postal_code}}", encodeURIComponent(postal))
+      .replace("{{house_number}}", encodeURIComponent(house));
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+    if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+      return ok_({ found: false, street: "", city: "", postal_code: postal });
+    }
+    var data = JSON.parse(response.getContentText());
+    return ok_({
+      found: true,
+      street: clean_(data.street || data.straat || data.address && data.address.street),
+      city: clean_(data.city || data.plaats || data.woonplaats || data.address && data.address.city),
+      postal_code: postal.replace(/^([0-9]{4})([A-Z]{2})$/, "$1 $2"),
+    });
+  } catch (error) {
+    console.error(error);
+    return ok_({ found: false, street: "", city: "", postal_code: postal });
+  }
 }
 
 function createOrder(payload) {
@@ -501,6 +646,12 @@ function createOrder(payload) {
       incrementCouponUse_(coupon.code);
     }
 
+    var bundleResult = applyBundleDiscounts_(normalized, subtotal);
+    if (bundleResult.discount > 0) {
+      subtotal = money_(subtotal - bundleResult.discount);
+      discountTotal = money_(discountTotal + bundleResult.discount);
+    }
+
     normalized.forEach(function (item) {
       if (item.variant) {
         updateByRow_("product_variants", item.variant.row, {
@@ -542,6 +693,8 @@ function createOrder(payload) {
       subtotal: money_(subtotal),
       discount_total: money_(discountTotal),
       coupon_code: coupon ? coupon.code : clean_(payload.coupon_code).toUpperCase(),
+      bundle_discount: money_(bundleResult.discount),
+      bundle_names: bundleResult.names.join(", "),
       shipping_cost: money_(shipping),
       vat_rate: vatRate,
       vat_amount: money_(total - excl),
@@ -571,6 +724,7 @@ function createOrder(payload) {
         availability_status: item.availability_status,
         quantity: item.quantity,
         line_total: money_(item.price * item.quantity - item.line_discount),
+        bundle_id: bundleResult.itemBundleIds[item.product.product_id || item.product.id] || "",
       });
     });
     created = order;
@@ -1449,28 +1603,57 @@ function getOrderDetails(payload) {
   out.items = rows_("order_items").filter(function (i) {
     return same_(i.order_id, payload.order_id);
   });
+  out.email_history = rows_("email_log")
+    .filter(function (e) {
+      return same_(e.order_id, payload.order_id);
+    })
+    .sort(sortCreatedDesc_);
+  out.mail_status = orderMailStatus_(out.email_history);
   return ok_(out);
 }
 
 function updatePaymentStatus(payload) {
-  requireStaff_(payload);
+  var auth = requireStaff_(payload);
   validateRequired_(payload, ["order_id", "payment_status"]);
-  return updateOrder_(payload.order_id, {
+  var status = clean_(payload.payment_status);
+  var result = updateOrder_(payload.order_id, {
     payment_status: clean_(payload.payment_status),
-    paid: clean_(payload.payment_status) === "paid",
+    paid: status === "paid",
     payment_link: clean_(payload.payment_link),
     updated_at: now_(),
   });
+  var order = getOrderRecord_(payload.order_id);
+  if (clean_(payload.payment_link) && status === "payment_link_sent") {
+    sendOrderMailByType_(order, "payment_link_sent");
+  }
+  if (status === "paid") {
+    sendOrderMailByType_(order, "payment_paid");
+  }
+  audit_(auth.email, "payment_status_updated", "order", payload.order_id, {
+    payment_status: status,
+    payment_link: clean_(payload.payment_link),
+  });
+  return result;
 }
 
 function updateFulfillmentStatus(payload) {
-  requireStaff_(payload);
+  var auth = requireStaff_(payload);
   validateRequired_(payload, ["order_id", "fulfillment_status"]);
-  return updateOrder_(payload.order_id, {
+  var status = clean_(payload.fulfillment_status);
+  var result = updateOrder_(payload.order_id, {
     fulfillment_status: clean_(payload.fulfillment_status),
     track_trace: clean_(payload.track_trace),
     updated_at: now_(),
   });
+  var order = getOrderRecord_(payload.order_id);
+  if (status === "shipped" || clean_(payload.track_trace)) {
+    sendOrderMailByType_(order, "fulfillment_shipped");
+  }
+  audit_(auth.email, "fulfillment_status_updated", "order", payload.order_id, {
+    fulfillment_status: status,
+    track_trace: clean_(payload.track_trace),
+  });
+  return result;
 }
 
 function updateOrder_(orderId, patch) {
@@ -1481,7 +1664,64 @@ function updateOrder_(orderId, patch) {
   updated.items = rows_("order_items").filter(function (i) {
     return same_(i.order_id, orderId);
   });
+  updated.email_history = rows_("email_log")
+    .filter(function (e) {
+      return same_(e.order_id, orderId);
+    })
+    .sort(sortCreatedDesc_);
+  updated.mail_status = orderMailStatus_(updated.email_history);
   return ok_(updated);
+}
+
+function getOrderRecord_(orderId) {
+  var row = findRow_("orders", "order_id", orderId);
+  if (!row) throw err_("Order niet gevonden.", 404);
+  return row.record;
+}
+
+function resendOrderEmail(payload) {
+  var auth = requireStaff_(payload);
+  validateRequired_(payload, ["order_id", "template"]);
+  var order = getOrderRecord_(payload.order_id);
+  sendOrderMailByType_(order, clean_(payload.template));
+  audit_(auth.email, "order_email_resent", "order", payload.order_id, { template: payload.template });
+  return getOrderDetails(payload);
+}
+
+function sendPaymentLinkEmail(payload) {
+  var auth = requireStaff_(payload);
+  validateRequired_(payload, ["order_id"]);
+  var order = getOrderRecord_(payload.order_id);
+  if (payload.payment_link !== undefined) {
+    var row = findRow_("orders", "order_id", payload.order_id);
+    updateByRow_("orders", row.row, {
+      payment_link: clean_(payload.payment_link),
+      payment_status: "payment_link_sent",
+      updated_at: now_(),
+    });
+    order = getOrderRecord_(payload.order_id);
+  }
+  if (!clean_(order.payment_link)) throw err_("Voeg eerst een betaallink toe.", 400);
+  sendOrderMailByType_(order, "payment_link_sent");
+  audit_(auth.email, "payment_link_email_sent", "order", payload.order_id, {});
+  return getOrderDetails(payload);
+}
+
+function orderMailStatus_(emails) {
+  var map = {
+    order_created: { label: "Orderbevestiging", sent: false, at: "" },
+    payment_link_sent: { label: "Betaallinkmail", sent: false, at: "" },
+    payment_paid: { label: "Betaalbevestiging", sent: false, at: "" },
+    fulfillment_shipped: { label: "Verzendmail", sent: false, at: "" },
+  };
+  (emails || []).forEach(function (email) {
+    var type = clean_(email.type);
+    if (map[type] && clean_(email.status) === "sent" && !map[type].sent) {
+      map[type].sent = true;
+      map[type].at = email.created_at;
+    }
+  });
+  return map;
 }
 
 function archiveOrder(payload) {
@@ -2071,26 +2311,116 @@ function sendSimpleEmail_(to, subject, html, type, targetId) {
 }
 
 function sendOrderMail_(order) {
+  return sendOrderMailByType_(order, "order_created");
+}
+
+function sendOrderMailByType_(order, type) {
   var company = getCompanyMap_();
-  var subject = "We hebben je bestelling ontvangen - " + order.order_id;
+  var items = rows_("order_items").filter(function (item) {
+    return same_(item.order_id, order.order_id);
+  });
+  var templates = {
+    order_created: {
+      subject: "We hebben je bestelling ontvangen - " + order.order_id,
+      title: "Bedankt voor je bestelling bij Mafash",
+      intro:
+        "We hebben je order goed ontvangen. Je bestelling wordt nu gecontroleerd en verwerkt. Je ontvangt binnenkort een tweede e-mail met de betaallink om je bestelling af te ronden.",
+      cta: "",
+    },
+    payment_link_sent: {
+      subject: "Betaallink voor je Mafash bestelling - " + order.order_id,
+      title: "Je bestelling is verwerkt",
+      intro:
+        "Je order is gecontroleerd. Gebruik de betaallink hieronder om je bestelling veilig af te ronden. Na betaling maken we je bestelling verder klaar.",
+      cta: "Betaal je bestelling",
+    },
+    payment_paid: {
+      subject: "Betaling ontvangen - " + order.order_id,
+      title: "Betaling ontvangen",
+      intro:
+        "Dank je wel. We hebben je betaling ontvangen en maken je bestelling nu klaar voor verzending of afhalen.",
+      cta: "",
+    },
+    fulfillment_shipped: {
+      subject: "Je Mafash bestelling is verzonden - " + order.order_id,
+      title: "Je bestelling is onderweg",
+      intro:
+        "Je bestelling is verzonden. Hieronder vind je de track & trace als die beschikbaar is.",
+      cta: "Volg je bestelling",
+    },
+  };
+  var tpl = templates[type] || templates.order_created;
+  var rows = [
+    ["Ordernummer", order.order_id],
+    ["Naam", order.customer_name],
+    ["E-mail", order.email],
+    ["Telefoon", order.phone],
+    ["Adres", [order.address, order.customer_postal_code, order.customer_city].filter(clean_).join(" ")],
+    ["Totaal", "EUR " + money_(order.total_price).toFixed(2)],
+    ["BTW", "EUR " + money_(order.vat_amount).toFixed(2)],
+    ["Verzending", "EUR " + money_(order.shipping_cost).toFixed(2)],
+    ["Betaallink", order.payment_link],
+    ["Track & trace", order.track_trace],
+  ];
+  var detailRows = rows
+    .filter(function (row) {
+      return clean_(row[1]);
+    })
+    .map(function (row) {
+      var value = /^https?:\/\//i.test(clean_(row[1]))
+        ? "<a href='" + esc_(row[1]) + "'>" + esc_(row[1]) + "</a>"
+        : esc_(row[1]);
+      return "<tr><td style='padding:8px 0;color:#667085'>" + esc_(row[0]) + "</td><td style='padding:8px 0;text-align:right;font-weight:700'>" + value + "</td></tr>";
+    })
+    .join("");
+  var itemRows = items
+    .map(function (item) {
+      var size = clean_(item.size) ? " · maat " + esc_(item.size) : "";
+      return "<tr><td style='padding:8px 0'>" + esc_(item.product_name) + size + " x " + esc_(item.quantity) + "</td><td style='padding:8px 0;text-align:right'>EUR " + money_(item.line_total).toFixed(2) + "</td></tr>";
+    })
+    .join("");
+  var ctaUrl =
+    type === "payment_link_sent" ? clean_(order.payment_link) : type === "fulfillment_shipped" ? clean_(order.track_trace) : "";
+  var cta =
+    ctaUrl && tpl.cta
+      ? "<p style='margin:22px 0'><a href='" +
+        esc_(ctaUrl) +
+        "' style='display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700'>" +
+        esc_(tpl.cta) +
+        "</a></p>"
+      : "";
   var html =
-    "<p>Hallo " +
+    "<div style='font-family:Arial,sans-serif;background:#f7f5ef;padding:24px;color:#141414'>" +
+    "<div style='max-width:680px;margin:0 auto;background:#fff;border:1px solid #e7e0d4;border-radius:12px;overflow:hidden'>" +
+    "<div style='padding:22px 24px;background:#111827;color:#fff'><div style='font-size:12px;letter-spacing:.18em;text-transform:uppercase;opacity:.75'>Mafash</div><h1 style='margin:8px 0 0;font-size:24px'>" +
+    esc_(tpl.title) +
+    "</h1></div><div style='padding:24px'><p style='font-size:15px;line-height:1.6;margin-top:0'>Hallo " +
     esc_(order.customer_name) +
-    ",</p><p>We hebben je bestelling ontvangen.</p><p><strong>Order:</strong> " +
-    esc_(order.order_id) +
-    "<br><strong>Totaal:</strong> EUR " +
-    money_(order.total_price).toFixed(2) +
-    "</p><p>" +
+    ",</p><p style='font-size:15px;line-height:1.6'>" +
+    esc_(tpl.intro) +
+    "</p>" +
+    cta +
+    "<table style='width:100%;border-collapse:collapse;border-top:1px solid #eaecf0;border-bottom:1px solid #eaecf0;margin:18px 0'>" +
+    detailRows +
+    "</table>" +
+    (itemRows
+      ? "<h2 style='font-size:16px;margin:22px 0 8px'>Producten</h2><table style='width:100%;border-collapse:collapse'>" +
+        itemRows +
+        "</table>"
+      : "") +
+    "<p style='margin-top:24px;color:#667085;font-size:13px;line-height:1.5'>" +
+    esc_(company.company_name || "MA Fashion") +
+    "</p><p style='margin-top:18px;color:#667085;font-size:12px'>" +
     esc_(company.credit_text) +
     " - <a href='" +
     esc_(company.credit_url) +
     "'>" +
     esc_(company.credit_label) +
-    "</a></p>";
+    "</a></p></div></div></div>";
   try {
     MailApp.sendEmail({
       to: order.email,
-      subject: subject,
+      subject: tpl.subject,
       htmlBody: html,
       name: clean_(company.company_name || "MA Fashion"),
     });
@@ -2099,8 +2429,8 @@ function sendOrderMail_(order) {
       created_at: now_(),
       order_id: order.order_id,
       to: order.email,
-      subject: subject,
-      type: "order_created",
+      subject: tpl.subject,
+      type: type,
       status: "sent",
       error: "",
     });
@@ -2110,8 +2440,8 @@ function sendOrderMail_(order) {
       created_at: now_(),
       order_id: order.order_id,
       to: order.email,
-      subject: subject,
-      type: "order_created",
+      subject: tpl.subject,
+      type: type,
       status: "failed",
       error: e.message,
     });
@@ -2292,6 +2622,131 @@ function getValidCoupon_(code) {
   )
     throw err_("Kortingscode is niet meer beschikbaar.", 400);
   return row.record;
+}
+
+function getBundlesAdmin(payload) {
+  requireStaff_(payload);
+  return ok_(rows_("bundles").sort(sortCreatedDesc_).map(bundleOut_));
+}
+
+function getBundlesPublic() {
+  return ok_(activeBundles_().map(bundleOut_));
+}
+
+function createBundle(payload) {
+  var auth = requireStaff_(payload);
+  validateRequired_(payload, ["name", "product_ids"]);
+  var now = now_();
+  var bundle = merge_(bundlePatch_(payload), {
+    bundle_id: id_("BDL"),
+    created_at: now,
+    updated_at: now,
+  });
+  append_("bundles", bundle);
+  audit_(auth.email, "bundle_created", "bundle", bundle.bundle_id, bundle);
+  return ok_(bundleOut_(bundle));
+}
+
+function updateBundle(payload) {
+  var auth = requireStaff_(payload);
+  validateRequired_(payload, ["bundle_id"]);
+  var row = findRow_("bundles", "bundle_id", payload.bundle_id);
+  if (!row) throw err_("Bundel niet gevonden.", 404);
+  var patch = merge_(bundlePatch_(merge_(row.record, payload)), { updated_at: now_() });
+  updateByRow_("bundles", row.row, patch);
+  var updated = findRow_("bundles", "bundle_id", payload.bundle_id).record;
+  audit_(auth.email, "bundle_updated", "bundle", payload.bundle_id, patch);
+  return ok_(bundleOut_(updated));
+}
+
+function archiveBundle(payload) {
+  var auth = requireStaff_(payload);
+  validateRequired_(payload, ["bundle_id"]);
+  var row = findRow_("bundles", "bundle_id", payload.bundle_id);
+  if (!row) throw err_("Bundel niet gevonden.", 404);
+  updateByRow_("bundles", row.row, { active: false, archived: true, updated_at: now_() });
+  audit_(auth.email, "bundle_archived", "bundle", payload.bundle_id, {});
+  return ok_({ bundle_id: payload.bundle_id, archived: true });
+}
+
+function bundlePatch_(payload) {
+  var discountType = clean_(payload.discount_type || "fixed");
+  if (["fixed", "percent", "fixed_bundle_price", "none"].indexOf(discountType) === -1)
+    throw err_("Ongeldig bundel kortingstype.", 400);
+  return {
+    name: clean_(payload.name),
+    product_ids: normalizeIds_(payload.product_ids),
+    discount_type: discountType,
+    discount_value: money_(payload.discount_value),
+    fixed_bundle_price: money_(payload.fixed_bundle_price),
+    start_at: clean_(payload.start_at),
+    end_at: clean_(payload.end_at),
+    status: clean_(payload.status || "live"),
+    active: payload.active === undefined ? true : bool_(payload.active),
+    frontend_text: clean_(payload.frontend_text),
+    archived: bool_(payload.archived),
+  };
+}
+
+function bundleOut_(bundle) {
+  var out = merge_(bundle, {});
+  out.product_ids = splitIds_(bundle.product_ids);
+  out.discount_value = money_(bundle.discount_value);
+  out.fixed_bundle_price = money_(bundle.fixed_bundle_price);
+  out.schedule_state = scheduleState_(bundle.start_at, bundle.end_at, bundle.status);
+  out.active = bundle.active === "" || bool_(bundle.active);
+  out.archived = bool_(bundle.archived);
+  return out;
+}
+
+function activeBundles_() {
+  return rows_("bundles").filter(function (bundle) {
+    var state = scheduleState_(bundle.start_at, bundle.end_at, bundle.status);
+    return (
+      (bundle.active === "" || bool_(bundle.active)) &&
+      !bool_(bundle.archived) &&
+      state === "live"
+    );
+  });
+}
+
+function applyBundleDiscounts_(items, subtotal) {
+  var byProduct = {};
+  items.forEach(function (item) {
+    var productId = clean_(item.product.product_id || item.product.id);
+    if (!byProduct[productId]) byProduct[productId] = { total: 0, qty: 0 };
+    byProduct[productId].total += money_(item.price * item.quantity - item.line_discount);
+    byProduct[productId].qty += item.quantity;
+  });
+  var discount = 0;
+  var names = [];
+  var itemBundleIds = {};
+  activeBundles_().forEach(function (bundle) {
+    var ids = splitIds_(bundle.product_ids);
+    if (!ids.length) return;
+    var applies = ids.every(function (id) {
+      return byProduct[clean_(id)] && byProduct[clean_(id)].qty > 0;
+    });
+    if (!applies) return;
+    var bundleBase = ids.reduce(function (sum, id) {
+      return sum + num_(byProduct[clean_(id)].total);
+    }, 0);
+    var itemDiscount = 0;
+    if (num_(bundle.fixed_bundle_price) > 0) {
+      itemDiscount = Math.max(0, bundleBase - money_(bundle.fixed_bundle_price));
+    } else if (clean_(bundle.discount_type) === "percent") {
+      itemDiscount = discountAmount_(bundleBase, "percent", bundle.discount_value);
+    } else if (clean_(bundle.discount_type) === "fixed") {
+      itemDiscount = Math.min(bundleBase, money_(bundle.discount_value));
+    }
+    if (itemDiscount <= 0) return;
+    discount += itemDiscount;
+    names.push(clean_(bundle.name));
+    ids.forEach(function (id) {
+      itemBundleIds[clean_(id)] = bundle.bundle_id;
+    });
+  });
+  return { discount: money_(Math.min(subtotal, discount)), names: names, itemBundleIds: itemBundleIds };
 }
 
 function incrementCouponUse_(code) {

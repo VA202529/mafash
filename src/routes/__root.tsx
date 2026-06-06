@@ -20,7 +20,10 @@ function NotFoundComponent() {
         <p className="mt-3 text-sm text-muted-foreground">
           The page you're looking for has been moved or removed.
         </p>
-        <Link to="/" className="mt-6 inline-block border border-foreground px-6 py-3 text-xs uppercase tracking-widest hover:bg-foreground hover:text-background">
+        <Link
+          to="/"
+          className="mt-6 inline-block border border-foreground px-6 py-3 text-xs uppercase tracking-widest hover:bg-foreground hover:text-background"
+        >
           Return Home
         </Link>
       </div>
@@ -34,10 +37,15 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4 text-center">
       <div>
-        <h1 className="font-serif text-3xl">Something went wrong</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{error.message}</p>
+        <h1 className="font-serif text-3xl">Er ging iets mis</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Probeer het later opnieuw of ga terug naar de shop.
+        </p>
         <button
-          onClick={() => { router.invalidate(); reset(); }}
+          onClick={() => {
+            router.invalidate();
+            reset();
+          }}
           className="mt-6 border border-foreground px-6 py-3 text-xs uppercase tracking-widest hover:bg-foreground hover:text-background"
         >
           Try again
@@ -52,14 +60,29 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "MA Fashion — Outlet Luxury Essentials" },
-      { name: "description", content: "Authenticated luxury & contemporary essentials from ALO, Essentials, Fear of God, Stone Island and more — at outlet pricing." },
+      { title: "MA Fashion - Outlet Luxury Essentials" },
+      {
+        name: "description",
+        content:
+          "Authenticated luxury and contemporary essentials from ALO, Essentials, Fear of God, Stone Island and more at outlet pricing.",
+      },
+      { property: "og:title", content: "MA Fashion - Outlet Luxury Essentials" },
+      {
+        property: "og:description",
+        content:
+          "Shop authenticated outlet fashion and curated contemporary essentials from Mafash.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap",
+      },
     ],
   }),
   shellComponent: RootShell,
@@ -71,8 +94,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <head><HeadContent /></head>
-      <body>{children}<Scripts /></body>
+      <head>
+        <HeadContent />
+      </head>
+      <body>
+        {children}
+        <Scripts />
+      </body>
     </html>
   );
 }
@@ -84,7 +112,9 @@ function RootComponent() {
       <CartProvider>
         <div className="flex min-h-screen flex-col">
           <SiteHeader />
-          <main className="flex-1"><Outlet /></main>
+          <main className="flex-1">
+            <Outlet />
+          </main>
           <SiteFooter />
         </div>
       </CartProvider>

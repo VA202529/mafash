@@ -657,6 +657,21 @@
               <div class="panel stack"><h2>Collecties</h2><div id="collectionsList" class="stack"></div></div>
               <div class="panel stack"><h2>Acties</h2><div id="actionsList" class="stack"></div></div>
             </div>
+            <div class="grid two">
+              <form id="bundleForm" class="panel stack">
+                <h2>Bundel / combinatiedeal</h2>
+                <label class="field"><span>Bundelnaam</span><input class="input" name="name" required /></label>
+                <label class="field"><span>Product IDs, komma-gescheiden</span><input class="input" name="product_ids" placeholder="PROD-..., PROD-..." required /></label>
+                <div class="grid two"><label class="field"><span>Kortingstype</span><select class="input" name="discount_type"><option value="fixed_bundle_price">Vaste bundelprijs</option><option value="fixed">Vast kortingsbedrag</option><option value="percent">Percentage</option></select></label><label class="field"><span>Vaste bundelprijs</span><input class="input" name="fixed_bundle_price" type="number" step="0.01" placeholder="90.00" /></label></div>
+                <label class="field"><span>Kortingswaarde</span><input class="input" name="discount_value" type="number" step="0.01" value="0" /></label>
+                <div class="grid two"><label class="field"><span>Vanaf</span><input class="input" name="start_at" type="datetime-local" /></label><label class="field"><span>Tot</span><input class="input" name="end_at" type="datetime-local" /></label></div>
+                <label class="field"><span>Frontend tekst</span><input class="input" name="frontend_text" placeholder="Shirt + broekje samen voordeliger" /></label>
+                <label class="field"><span>Status</span><select class="input" name="status"><option>draft</option><option selected>live</option><option>scheduled</option><option>hidden</option></select></label>
+                <label><input type="checkbox" name="active" value="true" checked /> Actief</label>
+                <button class="btn primary">Bundel opslaan</button>
+              </form>
+              <div class="panel stack"><h2>Bundels</h2><div id="bundlesList" class="stack"></div></div>
+            </div>
           </div>
         </section>
 
@@ -753,7 +768,7 @@
 
     <script>
       const DEFAULT_API_BASE =
-        "https://script.google.com/macros/s/AKfycbwC2-lIqeaqja0TEYlbbTEuv60JloxexDm_JO1boFGNELYdn_Mp7TQTR3w9Msy0u7s-/exec";
+        "https://script.google.com/macros/s/AKfycbynWfli1fSbNHx_29-G104VRmNzj0_yye3uN3gt-O0XjSju2C_OgLUb782APovi3_A/exec";
       const storedApiBase = localStorage.getItem("mafash_api_base") || "";
       const state = {
         token: localStorage.getItem("webshop_staff_token") || "",
@@ -791,6 +806,7 @@
         reviewFilter: "pending",
         collections: [],
         actions: [],
+        bundles: [],
         selectedPlanningIds: new Set(),
       };
       const qs = (s) => document.querySelector(s);
@@ -1298,6 +1314,52 @@
         state.selectedOrderIds = new Set(checked ? state.orders.map((o) => o.order_id) : []);
         loadOrders();
       }
+      const paymentLabels = {
+        pending: "Wacht op verwerking",
+        payment_link_sent: "Betaallink verzonden",
+        paid: "Betaald",
+        failed: "Mislukt",
+        refunded: "Terugbetaald",
+        cancelled: "Geannuleerd",
+      };
+      const fulfillmentLabels = {
+        pending: "Nog niet verzonden",
+        processing: "In verwerking",
+        packed: "Ingepakt",
+        shipped: "Verzonden",
+        delivered: "Geleverd",
+        ready_for_pickup: "Klaar om op te halen",
+        picked_up: "Opgehaald",
+        cancelled: "Geannuleerd",
+      };
+      function label(map, value) {
+        return map[value] || value || "-";
+      }
+      function cleanProductName(name) {
+        const text = String(name || "");
+        return text.replace(/\s*·\s*\[.*$/g, "").replace(/\s*\[.*$/g, "").trim() || text;
+      }
+      function renderOrderItem(i) {
+        const name = cleanProductName(i.product_name);
+        const size = i.size && String(i.size).startsWith("[") ? "" : i.size;
+        return `<div class="panel"><div class="split"><div><strong>${esc(name)}</strong><div class="muted">${size ? `Maat ${esc(size)} · ` : ""}${esc(i.quantity)} stuk(s) · ${money(i.price)} per stuk${i.availability_status === "on_request" ? " · Op aanvraag" : ""}</div>${i.bundle_id ? `<div class="pill">Bundeldeal toegepast</div>` : ""}</div><strong>${money(i.line_total)}</strong></div></div>`;
+      }
+      function renderMailStatus(mailStatus = {}) {
+        const types = ["order_created", "payment_link_sent", "payment_paid", "fulfillment_shipped"];
+        return types
+          .map((type) => {
+            const item = mailStatus[type] || {};
+            return `<div class="panel"><div class="split"><strong>${esc(item.label || type)}</strong><span class="pill">${item.sent ? "Verzonden" : "Nog niet"}</span></div><div class="muted">${item.sent ? esc(item.at || "") : "Deze mail is nog niet verzonden."}</div></div>`;
+          })
+          .join("");
+      }
+      function renderEmailHistory(emails = []) {
+        return emails.length
+          ? emails
+              .map((e) => `<div class="panel"><strong>${esc(e.type)}</strong><div class="muted">${esc(e.created_at)} · ${esc(e.to)} · ${esc(e.status)}</div>${e.error ? `<div class="notice error">${esc(e.error)}</div>` : ""}<button class="btn" onclick="resendOrderEmail('${esc(e.order_id)}','${esc(e.type)}',this)">Opnieuw mailen</button></div>`)
+              .join("")
+          : '<p class="muted">Nog geen e-mails gelogd.</p>';
+      }
       async function loadNewOrders() {
         qs("#newOrdersBody").innerHTML = '<tr><td colspan="6" class="muted">Nieuwe orders laden...</td></tr>';
         const r = await api("getNewOrders");
@@ -1312,16 +1374,19 @@
       async function openOrder(id) {
         const r = await api("getOrderDetails", { order_id: id });
         if (!r.success) {
-          alert(r.error.message);
+          status(r.error.message || "Order kon niet worden geladen.", true);
           return;
         }
         const o = r.data;
         qs("#dialogTitle").textContent = "Order " + o.order_id;
         qs("#orderDetails").innerHTML =
-          `<div class="grid two"><div class="panel"><h3>Klant</h3>${esc(o.customer_name)}<br>${esc(o.email)}<br>${esc(o.phone)}<br>${esc(o.address)} ${esc(o.customer_postal_code)} ${esc(o.customer_city)}</div><div class="panel"><h3>Totaal</h3>${money(o.total_price)}<br>BTW: ${money(o.vat_amount)}<br>Verzending: ${money(o.shipping_cost)}</div></div>
-      <div class="grid two"><label class="field"><span>Betaalstatus</span><select class="input" id="pay">${["pending", "payment_link_sent", "paid", "failed", "refunded", "cancelled"].map((x) => `<option ${x === o.payment_status ? "selected" : ""}>${x}</option>`).join("")}</select></label><label class="field"><span>Betaallink</span><input class="input" id="plink" value="${esc(o.payment_link || "")}"></label><label class="field"><span>Levering</span><select class="input" id="ful">${["pending", "processing", "packed", "shipped", "delivered", "ready_for_pickup", "picked_up", "cancelled"].map((x) => `<option ${x === o.fulfillment_status ? "selected" : ""}>${x}</option>`).join("")}</select></label><label class="field"><span>Track & trace</span><input class="input" id="track" value="${esc(o.track_trace || "")}"></label></div>
-      <div class="split"><button class="btn warn" onclick="savePayment('${esc(o.order_id)}',this)">Betaling opslaan</button><button class="btn primary" onclick="saveFulfillment('${esc(o.order_id)}',this)">Levering opslaan</button></div>
-      <h3>Producten</h3>${(o.items || []).map((i) => `<div class="split"><span>${esc(i.product_name)} · ${esc(i.size || "-")} x ${esc(i.quantity)}</span><strong>${money(i.line_total)}</strong></div>`).join("")}`;
+          `<div class="grid two"><div class="panel"><h3>Klantgegevens</h3><strong>${esc(o.customer_name)}</strong><br>${esc(o.email)}<br>${esc(o.phone)}</div><div class="panel"><h3>Adresgegevens</h3>${esc(o.address)}<br>${esc(o.customer_postal_code)} ${esc(o.customer_city)}<br>${esc(o.customer_country || "")}</div></div>
+      <div class="grid two"><div class="panel"><h3>Totaal</h3><div class="split"><span>Totaal</span><strong>${money(o.total_price)}</strong></div><div class="split"><span>BTW</span><strong>${money(o.vat_amount)}</strong></div><div class="split"><span>Verzending</span><strong>${money(o.shipping_cost)}</strong></div>${Number(o.bundle_discount || 0) > 0 ? `<div class="split"><span>Bundelkorting (${esc(o.bundle_names || "")})</span><strong>-${money(o.bundle_discount)}</strong></div>` : ""}</div><div class="panel"><h3>Status</h3><div><span class="pill">${esc(label(paymentLabels, o.payment_status))}</span></div><div style="margin-top:8px"><span class="pill">${esc(label(fulfillmentLabels, o.fulfillment_status))}</span></div><div class="muted" style="margin-top:8px">Laatst bijgewerkt: ${esc(o.updated_at || "")}</div></div></div>
+      <div class="grid two"><label class="field"><span>Betaalstatus</span><select class="input" id="pay">${["pending", "payment_link_sent", "paid", "failed", "refunded", "cancelled"].map((x) => `<option value="${x}" ${x === o.payment_status ? "selected" : ""}>${label(paymentLabels, x)}</option>`).join("")}</select></label><label class="field"><span>Betaallink</span><input class="input" id="plink" value="${esc(o.payment_link || "")}" placeholder="https://..."></label><label class="field"><span>Levering</span><select class="input" id="ful">${["pending", "processing", "packed", "shipped", "delivered", "ready_for_pickup", "picked_up", "cancelled"].map((x) => `<option value="${x}" ${x === o.fulfillment_status ? "selected" : ""}>${label(fulfillmentLabels, x)}</option>`).join("")}</select></label><label class="field"><span>Track & trace</span><input class="input" id="track" value="${esc(o.track_trace || "")}" placeholder="https://..."></label></div>
+      <div class="actions"><button class="btn warn" onclick="savePayment('${esc(o.order_id)}',this)">Betaalstatus opslaan</button><button class="btn" onclick="sendPaymentLink('${esc(o.order_id)}',this)">Betaallink mailen</button><button class="btn primary" onclick="markPaid('${esc(o.order_id)}',this)">Markeer als betaald</button><button class="btn" onclick="saveFulfillment('${esc(o.order_id)}',this)">Levering opslaan</button><button class="btn primary" onclick="markShipped('${esc(o.order_id)}',this)">Markeer als verzonden</button><button class="btn danger" onclick="archiveOrder('${esc(o.order_id)}',this)">Order archiveren</button></div>
+      <h3>Producten</h3>${(o.items || []).map(renderOrderItem).join("")}
+      <h3>E-mails</h3><div class="grid two">${renderMailStatus(o.mail_status)}</div>
+      <h3>Mailgeschiedenis</h3>${renderEmailHistory(o.email_history || [])}`;
         orderDialog.showModal();
       }
       async function savePayment(id, button) {
@@ -1332,8 +1397,29 @@
             payment_link: qs("#plink").value,
           });
           status(r.success ? "Betaling opgeslagen." : r.error.message, !r.success);
-          loadOrders();
+          if (r.success) {
+            state.orderById[id] = r.data;
+            openOrder(id);
+            loadOrders();
+          }
         });
+      }
+      async function sendPaymentLink(id, button) {
+        await submit(button, "Mailen...", async () => {
+          const r = await api("sendPaymentLinkEmail", {
+            order_id: id,
+            payment_link: qs("#plink").value,
+          });
+          status(r.success ? "Betaallinkmail verzonden." : r.error.message, !r.success);
+          if (r.success) {
+            openOrder(id);
+            loadOrders();
+          }
+        });
+      }
+      async function markPaid(id, button) {
+        qs("#pay").value = "paid";
+        await savePayment(id, button);
       }
       async function saveFulfillment(id, button) {
         await submit(button, "Opslaan...", async () => {
@@ -1343,7 +1429,22 @@
             track_trace: qs("#track").value,
           });
           status(r.success ? "Levering opgeslagen." : r.error.message, !r.success);
-          loadOrders();
+          if (r.success) {
+            state.orderById[id] = r.data;
+            openOrder(id);
+            loadOrders();
+          }
+        });
+      }
+      async function markShipped(id, button) {
+        qs("#ful").value = "shipped";
+        await saveFulfillment(id, button);
+      }
+      async function resendOrderEmail(id, template, button) {
+        await submit(button, "Mailen...", async () => {
+          const r = await api("resendOrderEmail", { order_id: id, template });
+          status(r.success ? "Mail opnieuw verzonden." : r.error.message, !r.success);
+          if (r.success) openOrder(id);
         });
       }
       async function quickPayment(id, payment_status, button) {
@@ -1550,19 +1651,22 @@
 
       async function loadPlanning() {
         if (!state.products.length) await loadProducts({ reset: true });
-        const [collections, actions] = await Promise.all([
+        const [collections, actions, bundles] = await Promise.all([
           api("getCollectionsAdmin"),
           api("getScheduledActionsAdmin"),
+          api("getBundlesAdmin"),
         ]);
-        if (!collections.success || !actions.success) {
-          status((collections.error || actions.error).message, true);
+        if (!collections.success || !actions.success || !bundles.success) {
+          status((collections.error || actions.error || bundles.error).message, true);
           return;
         }
         state.collections = collections.data || [];
         state.actions = actions.data || [];
+        state.bundles = bundles.data || [];
         renderProductPlanning();
         renderCollections();
         renderActions();
+        renderBundles();
       }
       function scheduleMark(value) {
         return `<span class="pill">${esc(value || "live")}</span>`;
@@ -1609,10 +1713,27 @@
             })
             .join("") || '<p class="muted">Nog geen acties.</p>';
       }
+      function renderBundles() {
+        qs("#bundlesList").innerHTML =
+          state.bundles
+            .map((b) => {
+              const id = esc(b.bundle_id);
+              return `<article class="manage-card"><div class="split"><strong>${esc(b.name)}</strong>${scheduleMark(b.schedule_state)}</div><label class="field"><span>Naam</span><input class="input" id="bundle-name-${id}" value="${esc(b.name)}"></label><label class="field"><span>Product IDs</span><input class="input" id="bundle-products-${id}" value="${esc((b.product_ids || []).join(", "))}"></label><div class="grid two"><label class="field"><span>Vaste bundelprijs</span><input class="input" type="number" step="0.01" id="bundle-fixed-${id}" value="${esc(b.fixed_bundle_price || 0)}"></label><label class="field"><span>Kortingswaarde</span><input class="input" type="number" step="0.01" id="bundle-value-${id}" value="${esc(b.discount_value || 0)}"></label></div><div class="grid two"><label class="field"><span>Vanaf</span><input class="input" type="datetime-local" id="bundle-start-${id}" value="${localDateValue(b.start_at)}"></label><label class="field"><span>Tot</span><input class="input" type="datetime-local" id="bundle-end-${id}" value="${localDateValue(b.end_at)}"></label></div><label class="field"><span>Tekst</span><input class="input" id="bundle-text-${id}" value="${esc(b.frontend_text || "")}"></label><div class="actions"><button class="btn primary" onclick="saveBundle('${id}',this)">Opslaan</button><button class="btn danger" onclick="archiveBundle('${id}',this)">Archief</button></div></article>`;
+            })
+            .join("") || '<p class="muted">Nog geen bundels.</p>';
+      }
       async function saveCollection(id, button) {
         await submit(button, "Opslaan...", async () => {
           const r = await api("updateCollection", { collection_id: id, name: qs("#col-name-" + CSS.escape(id)).value, product_ids: qs("#col-products-" + CSS.escape(id)).value, start_at: qs("#col-start-" + CSS.escape(id)).value, end_at: qs("#col-end-" + CSS.escape(id)).value, badge_text: qs("#col-badge-" + CSS.escape(id)).value, status: qs("#col-status-" + CSS.escape(id)).value });
           status(r.success ? "Collectie bijgewerkt." : r.error.message, !r.success);
+          loadPlanning();
+        });
+      }
+      async function saveBundle(id, button) {
+        await submit(button, "Opslaan...", async () => {
+          const current = state.bundles.find((b) => b.bundle_id === id) || {};
+          const r = await api("updateBundle", { bundle_id: id, name: qs("#bundle-name-" + CSS.escape(id)).value, product_ids: qs("#bundle-products-" + CSS.escape(id)).value, discount_type: current.discount_type || "fixed_bundle_price", fixed_bundle_price: qs("#bundle-fixed-" + CSS.escape(id)).value, discount_value: qs("#bundle-value-" + CSS.escape(id)).value, start_at: qs("#bundle-start-" + CSS.escape(id)).value, end_at: qs("#bundle-end-" + CSS.escape(id)).value, frontend_text: qs("#bundle-text-" + CSS.escape(id)).value, status: current.status || "live" });
+          status(r.success ? "Bundel bijgewerkt." : r.error.message, !r.success);
           loadPlanning();
         });
       }
@@ -1646,6 +1767,17 @@
           }
         });
       });
+      qs("#bundleForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        await submit(e.submitter, "Opslaan...", async () => {
+          const r = await api("createBundle", Object.fromEntries(new FormData(e.target)));
+          status(r.success ? "Bundel opgeslagen." : r.error.message, !r.success);
+          if (r.success) {
+            e.target.reset();
+            loadPlanning();
+          }
+        });
+      });
       qs("#quickActionForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         await submit(e.submitter, "Opslaan...", async () => {
@@ -1670,6 +1802,13 @@
         await submit(button, "Archief...", async () => {
           const r = await api("archiveScheduledAction", { action_id: id });
           status(r.success ? "Actie gearchiveerd." : r.error.message, !r.success);
+          loadPlanning();
+        });
+      }
+      async function archiveBundle(id, button) {
+        await submit(button, "Archief...", async () => {
+          const r = await api("archiveBundle", { bundle_id: id });
+          status(r.success ? "Bundel gearchiveerd." : r.error.message, !r.success);
           loadPlanning();
         });
       }

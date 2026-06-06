@@ -69,6 +69,14 @@ target_type, target_ids, starts_at, ends_at, frontend_text,
 status, active, created_at, updated_at, archived
 ```
 
+`bundles` stores lightweight combinatiedeals:
+
+```text
+bundle_id, name, product_ids, discount_type, discount_value,
+fixed_bundle_price, start_at, end_at, status, active,
+frontend_text, created_at, updated_at, archived
+```
+
 The backend also creates `product_images`, `orders`, `order_items`, `coupons`, `settings`, `bedrijf`, `staff`, `sessions`, `email_log` and `audit_log`.
 
 ## Proof Cards
@@ -140,6 +148,45 @@ Scheduled actions:
 
 When an action expires, normal product pricing returns automatically. The admin still sees scheduled, live and expired states.
 
+## Bundles
+
+Bundles apply automatically during `createOrder` when all required `product_ids` are in the cart.
+
+Supported bundle pricing:
+
+- `fixed_bundle_price`: for example shirt + broekje together for EUR 90.
+- `fixed`: fixed discount amount on the matched products.
+- `percent`: percentage discount on the matched products.
+
+The order stores `bundle_discount` and `bundle_names`, and affected order items store `bundle_id`.
+
+## Checkout Address Lookup
+
+Checkout supports optional postcode + house number lookup through:
+
+```text
+lookupAddress
+settings.postcode_lookup_url
+```
+
+If `postcode_lookup_url` is empty or lookup fails, the customer can still fill in street and city manually. The URL template may use:
+
+```text
+{{postal_code}}
+{{house_number}}
+```
+
+## Order Email Flow
+
+Order emails are logged in `email_log` with fixed types:
+
+- `order_created`: direct order received mail.
+- `payment_link_sent`: betaallink mail after admin adds/sends a link.
+- `payment_paid`: payment received confirmation.
+- `fulfillment_shipped`: shipping / track & trace mail.
+
+`getOrderDetails` returns `email_history` and `mail_status`, so the admin can see exactly which mails were sent and when.
+
 ## API Actions
 
 Public:
@@ -154,6 +201,8 @@ getCustomerReviewsPublic
 getCollectionsPublic
 getActiveScheduledActionsPublic
 createOrder
+lookupAddress
+getBundlesPublic
 ```
 
 Admin:
@@ -204,6 +253,12 @@ archiveCompletedOrders
 bulkArchiveOrders
 updatePaymentStatus
 updateFulfillmentStatus
+sendPaymentLinkEmail
+resendOrderEmail
+getBundlesAdmin
+createBundle
+updateBundle
+archiveBundle
 getCompanySettings
 updateCompanySettings
 ```
