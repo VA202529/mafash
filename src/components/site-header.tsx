@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, ShoppingBag } from "lucide-react";
 import { getCompany } from "@/lib/api";
 import { useCart } from "@/lib/cart";
+import { privateSellerDisclaimer } from "@/lib/disclaimer";
 
 export function SiteHeader() {
   const { count } = useCart();
@@ -80,6 +81,14 @@ export function SiteFooter() {
         <div>
           <div className="font-serif text-xl tracking-[0.3em]">MA·FASHION</div>
           <p className="mt-4 text-sm text-muted-foreground">{footerText}</p>
+          <div className="mt-6 border-t border-border pt-4">
+            <div className="eyebrow mb-3">Disclaimer</div>
+            <div className="space-y-2 text-xs leading-relaxed text-muted-foreground">
+              {privateSellerDisclaimer.map((text) => (
+                <p key={text}>{text}</p>
+              ))}
+            </div>
+          </div>
         </div>
         <div>
           <div className="eyebrow mb-4">Shop</div>

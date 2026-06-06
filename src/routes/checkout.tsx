@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { createOrder } from "@/lib/api";
 import { useCart } from "@/lib/cart";
+import { privateSellerDisclaimer } from "@/lib/disclaimer";
 
 export const Route = createFileRoute("/checkout")({
   component: CheckoutPage,
@@ -144,6 +145,15 @@ function CheckoutPage() {
             </label>
           </Section>
 
+          <section className="border border-border bg-card p-5">
+            <div className="eyebrow mb-3">Disclaimer</div>
+            <div className="space-y-2 text-sm leading-relaxed text-muted-foreground">
+              {privateSellerDisclaimer.map((text) => (
+                <p key={text}>{text}</p>
+              ))}
+            </div>
+          </section>
+
           <button
             type="submit"
             disabled={submitting}
@@ -173,6 +183,11 @@ function CheckoutPage() {
                 <div className="flex flex-1 justify-between">
                   <div>
                     <div className="font-serif">{it.product.name}</div>
+                    {it.product.availability_status === "on_request" && (
+                      <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                        Op aanvraag - verzending vanuit Frankrijk
+                      </div>
+                    )}
                     <div className="text-xs text-muted-foreground">
                       {it.product.brand} · {it.size}
                     </div>

@@ -75,6 +75,12 @@ function ProductPage() {
   const related = allProducts
     .filter((p) => p.id !== product.id && p.category === product.category)
     .slice(0, 4);
+  const sizeOptions = product.variants?.length
+    ? product.variants
+    : product.sizes.map((item) => ({ size: item, stock: Number(product.stock || 0) }));
+  const selectedStock = sizeOptions.find((option) => option.size === size)?.stock || 0;
+  const selectedAvailability = selectedStock > 0 ? "Op voorraad" : "Op aanvraag";
+  const canBuy = Boolean(size);
 
   const handleAdd = () => {
     if (!size) return;
@@ -144,6 +150,7 @@ function ProductPage() {
                   <img
                     src={img.thumbnail_url || img.url}
                     alt={product.name}
+                    loading="lazy"
                     className="h-full w-full object-cover"
                   />
                 </button>
@@ -181,44 +188,58 @@ function ProductPage() {
               <SizeGuide category={product.category} />
             </div>
             <div className="flex flex-wrap gap-2">
-              {product.sizes.map((s) => (
+              {sizeOptions.map((option) => (
                 <button
-                  key={s}
-                  onClick={() => setSize(s)}
+                  key={option.size}
+                  onClick={() => setSize(option.size)}
                   className={
                     "min-w-12 border px-4 py-3 text-xs uppercase tracking-widest transition " +
-                    (size === s
+                    (size === option.size
                       ? "border-foreground bg-foreground text-background"
                       : "border-border hover:border-foreground")
                   }
                 >
-                  {s}
+                  {option.size}
                 </button>
               ))}
             </div>
+            {size && (
+              <p className="mt-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                {selectedAvailability}
+                {selectedStock > 0 && selectedStock < 4
+                  ? ` - nog ${selectedStock} in maat ${size}`
+                  : ""}
+              </p>
+            )}
+            {size && selectedStock < 1 && (
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                Dit item is op aanvraag. We bestellen het via onze authentieke outlet en verzenden
+                vanuit Frankrijk.
+              </p>
+            )}
           </div>
 
           <div className="mt-8 flex flex-col gap-3">
             <button
               onClick={handleAdd}
-              disabled={!size || product.stock === 0}
+              disabled={!canBuy}
               className="flex items-center justify-center gap-2 bg-foreground py-4 text-xs uppercase tracking-[0.22em] text-background transition hover:bg-foreground/85 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {added ? (
                 <>
                   <Check className="h-4 w-4" /> Added to bag
                 </>
-              ) : product.stock === 0 ? (
-                "Out of stock"
               ) : !size ? (
                 "Select size"
+              ) : selectedStock < 1 ? (
+                "Add request item"
               ) : (
                 "Add to bag"
               )}
             </button>
             <button
               onClick={handleBuyNow}
-              disabled={!size || product.stock === 0}
+              disabled={!canBuy}
               className="border border-foreground py-4 text-xs uppercase tracking-[0.22em] hover:bg-foreground hover:text-background disabled:cursor-not-allowed disabled:opacity-40"
             >
               Buy now
@@ -230,7 +251,7 @@ function ProductPage() {
               <ShieldCheck className="h-4 w-4" /> Authenticated by MA atelier
             </li>
             <li className="flex items-center gap-3">
-              <Truck className="h-4 w-4" /> Free shipping over €200
+              <Truck className="h-4 w-4" /> Op aanvraag via onze authentieke outlet in Frankrijk
             </li>
             <li className="flex items-center gap-3">
               <RotateCcw className="h-4 w-4" /> 30-day returns

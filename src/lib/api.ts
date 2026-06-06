@@ -1,7 +1,7 @@
 import type { Product } from "@/data/products";
 
 export const API_BASE =
-  "https://script.google.com/macros/s/AKfycbyiQvbymRAMknw96eZ8r7rtFIK2UyMyLg-7nEme9QgSOEoGbaUXucOEtns6TwJHOHBC/exec";
+  "https://script.google.com/macros/s/AKfycbwC2-lIqeaqja0TEYlbbTEuv60JloxexDm_JO1boFGNELYdn_Mp7TQTR3w9Msy0u7s-/exec";
 
 type ApiEnvelope<T> =
   | { success: true; data: T; error: null }
@@ -37,6 +37,54 @@ export type CreateOrderPayload = {
   items: Array<{ product_id: string; quantity: number; size?: string }>;
 };
 
+export type ProofReview = {
+  proof_id: string;
+  image_url: string;
+  thumbnail_url?: string;
+  customer_name?: string;
+  link_url?: string;
+  product_name?: string;
+  badge_text?: string;
+  quote?: string;
+  review_date?: string;
+};
+
+export type CustomerReview = {
+  review_id: string;
+  name: string;
+  rating: number;
+  message: string;
+  created_at?: string;
+};
+
+export type CreateCustomerReviewPayload = {
+  name: string;
+  email: string;
+  rating: number;
+  message: string;
+};
+
+export type ScheduledAction = {
+  action_id: string;
+  name: string;
+  action_type: string;
+  discount_type?: string;
+  discount_value?: number;
+  frontend_text?: string;
+  ends_at?: string;
+};
+
+export type CollectionDrop = {
+  collection_id: string;
+  name: string;
+  description?: string;
+  badge_text?: string;
+  start_at?: string;
+  end_at?: string;
+  schedule_state?: string;
+  product_ids?: string[];
+};
+
 function splitList(value: unknown) {
   if (Array.isArray(value))
     return value
@@ -64,6 +112,35 @@ export function normalizeProduct(raw: Partial<Product> & Record<string, unknown>
   const image = String(
     images?.[0]?.thumbnail_url || images?.[0]?.url || raw.image || raw.image_url || "",
   );
+  const variants = Array.isArray(raw.variants)
+    ? raw.variants
+        .map((variant) => {
+          const row = variant as Record<string, unknown>;
+          const stock = Math.max(0, Number(row.stock || 0));
+          const availabilityStatus = String(
+            row.availability_status || (stock > 0 ? "in_stock" : "on_request"),
+          );
+          return {
+            variant_id: String(row.variant_id || ""),
+            size: String(row.size || "").trim(),
+            stock,
+            availability_status: availabilityStatus,
+            availability_label: String(
+              row.availability_label ||
+                (availabilityStatus === "in_stock" ? "Op voorraad" : "Op aanvraag"),
+            ),
+            sort_order: Number(row.sort_order || 0),
+            active: row.active !== false && String(row.active).toLowerCase() !== "false",
+          };
+        })
+        .filter((variant) => variant.size && variant.active)
+    : [];
+  const sizes = variants.length ? variants.map((variant) => variant.size) : splitList(raw.sizes);
+  const variantStock = variants.reduce((total, variant) => total + variant.stock, 0);
+  const stock = variants.length ? variantStock : Number(raw.stock || 0);
+  const availabilityStatus = String(
+    raw.availability_status || (stock > 0 ? "in_stock" : "on_request"),
+  );
 
   return {
     id,
@@ -76,13 +153,26 @@ export function normalizeProduct(raw: Partial<Product> & Record<string, unknown>
     image,
     image_url: image,
     images,
-    sizes: splitList(raw.sizes).length ? splitList(raw.sizes) : ["One Size"],
+    sizes: sizes.length ? sizes : ["One Size"],
+    variants,
     description: String(raw.description || ""),
-    stock: Number(raw.stock || 0),
+    stock,
+    availability_status: availabilityStatus,
+    availability_label: String(
+      raw.availability_label || (availabilityStatus === "in_stock" ? "Op voorraad" : "Op aanvraag"),
+    ),
     sku: String(raw.sku || ""),
     discount_type: String(raw.discount_type || "none"),
     discount_value: Number(raw.discount_value || 0),
     featured: raw.featured === true || String(raw.featured).toLowerCase() === "true",
+    schedule_state: String(raw.schedule_state || "live"),
+    visible_from: String(raw.visible_from || ""),
+    visible_until: String(raw.visible_until || ""),
+    launch_badge_text: String(raw.launch_badge_text || ""),
+    scheduled_action:
+      raw.scheduled_action && typeof raw.scheduled_action === "object"
+        ? (raw.scheduled_action as Record<string, unknown>)
+        : null,
   };
 }
 
@@ -98,7 +188,13 @@ async function request<T>(action: string, data: Record<string, unknown> = {}): P
 }
 
 export async function getProducts(
-  filters: { category?: string; brand?: string; featured?: boolean } = {},
+  filters: {
+    category?: string;
+    brand?: string;
+    featured?: boolean;
+    limit?: number;
+    offset?: number;
+  } = {},
 ) {
   try {
     const data = await request<Array<Record<string, unknown>>>("getProducts", filters);
@@ -136,6 +232,46 @@ export async function getCompany() {
       credit_url: "https://vanappiah.com/",
       credit_label: "VA",
     };
+  }
+}
+
+export async function getProofReviews() {
+  try {
+    return await request<ProofReview[]>("getProofReviews");
+  } catch (error) {
+    console.warn(error);
+    return [];
+  }
+}
+
+export async function getCustomerReviews() {
+  try {
+    return await request<CustomerReview[]>("getCustomerReviewsPublic");
+  } catch (error) {
+    console.warn(error);
+    return [];
+  }
+}
+
+export async function createCustomerReview(payload: CreateCustomerReviewPayload) {
+  return request<{ review_id: string; status: string }>("createCustomerReview", payload);
+}
+
+export async function getActiveScheduledActions() {
+  try {
+    return await request<ScheduledAction[]>("getActiveScheduledActionsPublic");
+  } catch (error) {
+    console.warn(error);
+    return [];
+  }
+}
+
+export async function getCollections() {
+  try {
+    return await request<CollectionDrop[]>("getCollectionsPublic");
+  } catch (error) {
+    console.warn(error);
+    return [];
   }
 }
 

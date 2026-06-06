@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { z } from "zod";
 import type { Product } from "@/data/products";
@@ -18,8 +18,8 @@ export const Route = createFileRoute("/shop")({
   component: ShopPage,
   head: () => ({
     meta: [
-      { title: "Shop — MA Fashion" },
-      { name: "description", content: "All products — outlet luxury essentials." },
+      { title: "Shop - MA Fashion" },
+      { name: "description", content: "All products - outlet luxury essentials." },
     ],
   }),
 });
@@ -29,10 +29,31 @@ const categories: Array<"All" | ShopCategory> = ["All", "Tops", "Bottoms", "Oute
 function ShopPage() {
   const { category, brand } = Route.useSearch();
   const [query, setQuery] = useState("");
-  const { data = [], isLoading } = useQuery({
-    queryKey: ["products", category || "all", brand || "all"],
-    queryFn: () => getProducts({ category, brand }),
+  const [loadFullProducts, setLoadFullProducts] = useState(false);
+  const { data: firstProducts = [], isLoading: isFirstLoading } = useQuery({
+    queryKey: ["products", category || "all", brand || "all", "first"],
+    queryFn: () => getProducts({ category, brand, limit: 5 }),
+    staleTime: 60_000,
   });
+  const { data: fullProducts = [], isFetching: isFullFetching } = useQuery({
+    queryKey: ["products", category || "all", brand || "all", "full"],
+    queryFn: () => getProducts({ category, brand }),
+    enabled: loadFullProducts,
+  });
+
+  useEffect(() => {
+    setLoadFullProducts(false);
+  }, [category, brand]);
+
+  useEffect(() => {
+    if (firstProducts.length) {
+      const timer = window.setTimeout(() => setLoadFullProducts(true), 80);
+      return () => window.clearTimeout(timer);
+    }
+  }, [firstProducts.length]);
+
+  const data = fullProducts.length ? fullProducts : firstProducts;
+  const isLoading = isFirstLoading && !firstProducts.length;
   const brands = useMemo(() => Array.from(new Set(data.map((p) => p.brand))).sort(), [data]);
   const q = query.trim().toLowerCase();
   const list = data.filter(
@@ -46,7 +67,8 @@ function ShopPage() {
     <div className="mx-auto max-w-[1400px] px-6 py-12">
       <div className="mb-10 border-b border-border pb-8">
         <div className="eyebrow mb-3">
-          Outlet · {isLoading ? "loading" : `${list.length} pieces`}
+          Outlet - {isLoading ? "loading" : `${list.length} pieces`}
+          {isFullFetching && firstProducts.length > 0 ? " - aanvullen" : ""}
         </div>
         <h1 className="font-serif text-5xl md:text-6xl">{category ?? brand ?? "The Edit"}</h1>
         <div className="mt-8 flex max-w-xl items-center gap-3 border-b border-foreground py-2">
@@ -127,6 +149,15 @@ function ShopPage() {
         </aside>
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-12 md:grid-cols-3">
+          {isLoading &&
+            Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="animate-pulse">
+                <div className="aspect-[4/5] bg-secondary" />
+                <div className="mt-4 h-3 w-20 bg-secondary" />
+                <div className="mt-3 h-6 w-4/5 bg-secondary" />
+                <div className="mt-3 h-2 w-10 animate-pulse bg-foreground/30" />
+              </div>
+            ))}
           {list.map((p) => (
             <ProductCard key={p.product_id || p.id} p={p} />
           ))}
@@ -162,9 +193,12 @@ function ProductCard({ p }: { p: Product }) {
         )}
         {off > 0 && (
           <span className="absolute left-3 top-3 bg-background px-2 py-1 text-[10px] uppercase tracking-widest">
-            −{off}%
+            -{off}%
           </span>
         )}
+        <span className="absolute bottom-3 left-3 bg-background/90 px-2 py-1 text-[10px] uppercase tracking-widest">
+          {p.availability_label || "Op aanvraag"}
+        </span>
       </div>
       <div className="mt-4 flex items-start justify-between">
         <div>
@@ -174,9 +208,11 @@ function ProductCard({ p }: { p: Product }) {
           <div className="mt-1 font-serif text-lg leading-tight">{p.name}</div>
         </div>
         <div className="text-right">
-          <div className="text-sm">€{p.price.toFixed(2)}</div>
+          <div className="text-sm">EUR {p.price.toFixed(2)}</div>
           {p.retail > p.price && (
-            <div className="text-xs text-muted-foreground line-through">€{p.retail.toFixed(2)}</div>
+            <div className="text-xs text-muted-foreground line-through">
+              EUR {p.retail.toFixed(2)}
+            </div>
           )}
         </div>
       </div>

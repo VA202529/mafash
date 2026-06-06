@@ -1,20 +1,51 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import hero from "@/assets/hero.jpg";
 import type { Product } from "@/data/products";
-import { getProducts } from "@/lib/api";
+import { getActiveScheduledActions, getCollections, getProducts } from "@/lib/api";
+import { CustomerProof } from "@/components/customer-proof";
+import { CustomerReviews } from "@/components/customer-reviews";
 
 export const Route = createFileRoute("/")({
   component: Home,
 });
 
 function Home() {
-  const { data = [], isLoading } = useQuery({
-    queryKey: ["products", "home"],
-    queryFn: () => getProducts(),
+  const [loadFullProducts, setLoadFullProducts] = useState(false);
+  const { data: firstProducts = [], isLoading: isFirstLoading } = useQuery({
+    queryKey: ["products", "home", "first"],
+    queryFn: () => getProducts({ limit: 5 }),
+    staleTime: 60_000,
   });
+  const { data: fullProducts = [], isFetching: isFullFetching } = useQuery({
+    queryKey: ["products", "home", "full"],
+    queryFn: () => getProducts(),
+    enabled: loadFullProducts,
+  });
+  const { data: actions = [] } = useQuery({
+    queryKey: ["scheduled-actions", "active"],
+    queryFn: getActiveScheduledActions,
+    staleTime: 30_000,
+  });
+  const { data: drops = [] } = useQuery({
+    queryKey: ["collections", "public"],
+    queryFn: getCollections,
+    staleTime: 30_000,
+  });
+  useEffect(() => {
+    if (firstProducts.length) {
+      const timer = window.setTimeout(() => setLoadFullProducts(true), 80);
+      return () => window.clearTimeout(timer);
+    }
+  }, [firstProducts.length]);
+
+  const data = fullProducts.length ? fullProducts : firstProducts;
+  const isLoading = isFirstLoading && !firstProducts.length;
   const featured = data.slice(0, 4);
+  const promo = actions.find((action) => action.frontend_text);
+  const drop = drops[0];
 
   return (
     <div>
@@ -72,11 +103,41 @@ function Home() {
         </div>
       </section>
 
+      {promo?.frontend_text && (
+        <section className="border-b border-border px-6 py-4 text-center text-xs uppercase tracking-[0.22em]">
+          {promo.frontend_text}
+        </section>
+      )}
+
+      {drop && (
+        <section className="border-b border-border px-6">
+          <div className="mx-auto flex max-w-[1400px] flex-col gap-4 py-8 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="eyebrow mb-2">{drop.badge_text || drop.schedule_state}</div>
+              <h2 className="font-serif text-3xl">{drop.name}</h2>
+              {drop.description && (
+                <p className="mt-2 max-w-xl text-sm text-muted-foreground">{drop.description}</p>
+              )}
+            </div>
+            {drop.start_at && (
+              <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                Opens {drop.start_at}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="mx-auto max-w-[1400px] px-6 py-24">
         <div className="mb-12 flex items-end justify-between">
           <div>
             <div className="eyebrow mb-3">The Edit</div>
             <h2 className="font-serif text-4xl md:text-5xl">Currently coveted.</h2>
+            {isFullFetching && firstProducts.length > 0 && (
+              <div className="mt-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                Collectie aanvullen...
+              </div>
+            )}
           </div>
           <Link
             to="/shop"
@@ -86,6 +147,15 @@ function Home() {
           </Link>
         </div>
         <div className="grid grid-cols-2 gap-x-6 gap-y-12 md:grid-cols-4">
+          {isLoading &&
+            Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="animate-pulse">
+                <div className="aspect-[4/5] bg-secondary" />
+                <div className="mt-4 h-3 w-20 bg-secondary" />
+                <div className="mt-3 h-6 w-3/4 bg-secondary" />
+                <div className="mt-3 h-2 w-10 animate-pulse bg-foreground/30" />
+              </div>
+            ))}
           {featured.map((p) => (
             <ProductCard key={p.product_id || p.id} p={p} />
           ))}
@@ -96,6 +166,9 @@ function Home() {
           )}
         </div>
       </section>
+
+      <CustomerProof />
+      <CustomerReviews />
 
       <section className="border-t border-border bg-secondary">
         <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-12 px-6 py-20 text-center md:grid-cols-3">
@@ -142,6 +215,9 @@ function ProductCard({ p }: { p: Product }) {
             −{off}%
           </span>
         )}
+        <span className="absolute bottom-3 left-3 bg-background/90 px-2 py-1 text-[10px] uppercase tracking-widest">
+          {p.availability_label || "Op aanvraag"}
+        </span>
       </div>
       <div className="mt-4 flex items-start justify-between gap-2">
         <div>

@@ -15,12 +15,28 @@ export type Product = {
     drive_file_id?: string;
   }>;
   sizes: string[];
+  variants?: Array<{
+    variant_id?: string;
+    size: string;
+    stock: number;
+    availability_status?: "in_stock" | "on_request" | string;
+    availability_label?: string;
+    sort_order?: number;
+    active?: boolean;
+  }>;
   description: string;
   stock?: number;
+  availability_status?: "in_stock" | "on_request" | string;
+  availability_label?: string;
   sku?: string;
   discount_type?: "none" | "percent" | "fixed" | string;
   discount_value?: number;
   featured?: boolean;
+  schedule_state?: string;
+  visible_from?: string;
+  visible_until?: string;
+  launch_badge_text?: string;
+  scheduled_action?: Record<string, unknown> | null;
 };
 
 export const products: Product[] = [];
